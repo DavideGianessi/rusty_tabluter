@@ -1,5 +1,6 @@
 use colored::{ColoredString, Colorize};
 use primitive_types::U256;
+use serde_json::Value;
 
 use crate::rot_table::ROT_TABLE;
 
@@ -221,6 +222,53 @@ pub fn canonize(state: U256) -> U256 {
     }
 
     canonical
+}
+pub fn parse_json_state(json: &str) -> U256 {
+    let value: Value =
+        serde_json::from_str(json)
+            .expect("Invalid JSON from server");
+    let board = value["board"]
+        .as_array()
+        .expect("board not array");
+    let turn = value["turn"]
+        .as_str()
+        .expect("turn missing");
+    let mut state = U256::zero();
+    let mut king_row = 0usize;
+    let mut king_col = 0usize;
+    for row in 0..9 {
+        let row_array = board[row]
+            .as_array()
+            .expect("row not array");
+        for col in 0..9 {
+            let cell = row_array[col]
+                .as_str()
+                .expect("cell not string");
+            let idx = index(row, col);
+            match cell {
+                "WHITE" => {
+                    state |= U256::one() << idx;
+                }
+                "BLACK" => {
+                    state |= U256::one() << (81 + idx);
+                }
+                "KING" => {
+                    state |= U256::one() << idx;
+                    king_row = row;
+                    king_col = col;
+                }
+                "EMPTY" | "THRONE" => {}
+                _ => {}
+            }
+        }
+    }
+    state |= U256::from(king_row as u32) << (2 * 81);
+    state |= U256::from(king_col as u32) << (2 * 81 + 4);
+    if turn == "WHITE" {
+        state |= U256::one() << (2 * 81 + 8);
+    }
+
+    state
 }
 
 pub fn parse_position(input: &str) -> U256 {
@@ -540,7 +588,7 @@ fn apply_move(
 pub fn extract_move(
     before: U256,
     after: U256,
-) -> Option<String> {
+) -> Option<(usize, usize, usize, usize)> {
     for from in 0..81 {
         for to in 0..81 {
             let sr = from / 9;
@@ -552,22 +600,10 @@ pub fn extract_move(
                     apply_move(before, sr, sc, er, ec)
                 );
                 if candidate == after {
-                    return Some(format_coords(from, to));
+                    return Some((sr,sc,er,ec));
                 }
             }
         }
     }
     None
-}
-fn format_coords(from: usize, to: usize) -> String {
-    let (rf, cf) = (from / 9, from % 9);
-    let (rt, ct) = (to / 9, to % 9);
-
-    format!(
-        "{}{} {}{}",
-        (b'a' + cf as u8) as char,
-        rf + 1,
-        (b'a' + ct as u8) as char,
-        rt + 1
-    )
 }

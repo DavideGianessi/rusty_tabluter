@@ -9,55 +9,65 @@ mod stats;
 mod client;
 mod interactive;
 
-use crate::board::{canonize, generate_moves, get_printable_board, parse_position,extract_move};
+use crate::board::{canonize, generate_moves, format_position, extract_move, get_white_win, get_black_win, get_draw};
 use crate::search::{search};
-use crate::client::{...};
+use crate::client::{connect,get_state,send_move};
 
 fn main() {
-
-    let mut client =
-        TablutClient::connect("127.0.0.1", Turn::WHITE)
-            .expect("connection failed");
-
-    client.declare_name("RustBot")
-        .unwrap();
+    let res = connect("localhost", true);
+    if !res.is_ok() {
+            println!("network error");
+            return;
+    }
+    let mut history: Vec<U256> = Vec::new();
 
     loop {
 
-        let state = client.read_state().unwrap();
+        let state: U256 = get_state().unwrap();
 
-        match state.turn {
+        println!("state received: \n{}",format_position(state));
+        if state == get_white_win() {
+            println!("WHITE WIN");
+            break;
+        }
 
-            Turn::WHITE if client.role == Turn::WHITE => {
+        if state == get_black_win() {
+            println!("BLACK WIN");
+            break;
+        }
 
-                let mv = decide_move(&state);
+        if state == get_draw() {
+            println!("DRAW");
+            break;
+        }
 
-                client.send_move(mv).unwrap();
-            }
+        let result = search(state, &history);
+        println!("value: {} new_state_canonized: \n{}",result.value, format_position(result.best_move.unwrap()));
+        let best_state = result.best_move.unwrap();
+        history.push(canonize(state));
+        history.push(canonize(best_state));
+        let mv = extract_move(state,best_state).unwrap();
+        let (start_row,start_col,end_row,end_col) = mv;
+        println!("mossa: {} {} -> {} {}",start_row,start_col, end_row, end_col);
+        let res = send_move(start_row,start_col,end_row,end_col);
+        if !res.is_ok() {
+                println!("network error");
+                return;
+        }
+        let state = get_state().unwrap(); //mi restituisce lo stato dopo la mia mossa
+        if state == get_white_win() {
+            println!("WHITE WIN");
+            break;
+        }
 
-            Turn::BLACK if client.role == Turn::BLACK => {
+        if state == get_black_win() {
+            println!("BLACK WIN");
+            break;
+        }
 
-                let mv = decide_move(&state);
-
-                client.send_move(mv).unwrap();
-            }
-
-            Turn::WHITEWIN => {
-                println!("WHITE WIN");
-                break;
-            }
-
-            Turn::BLACKWIN => {
-                println!("BLACK WIN");
-                break;
-            }
-
-            Turn::DRAW => {
-                println!("DRAW");
-                break;
-            }
-
-            _ => {}
+        if state == get_draw() {
+            println!("DRAW");
+            break;
         }
     }
 }

@@ -6,7 +6,6 @@ use termion::{clear, cursor};
 
 use crate::board::{canonize, generate_moves, get_printable_board, parse_position,extract_move};
 use crate::search::{search};
-use crate::client::{TablutCllient};
 
 pub fn interactive() {
 
@@ -41,7 +40,7 @@ turn: W";
 
         write!(stdout, "\r\nMoves available: {}\r\n", moves.len()).unwrap();
         write!(stdout, "Selected: {}\r\n", selected).unwrap();
-        write!(stdout, "move chosen: {}\r\n", extract_move(state,moves[selected]).unwrap()).unwrap();
+        //write!(stdout, "move chosen: {}\r\n", extract_move(state,moves[selected]).unwrap()).unwrap();
 
         write!(stdout, "\r\nPreview: {}\r\n", moves[selected]).unwrap();
         let selected_board_string = get_printable_board(moves[selected]);

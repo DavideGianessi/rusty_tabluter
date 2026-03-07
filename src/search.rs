@@ -71,12 +71,94 @@ impl TranspositionTable {
 
 pub fn search(root: U256, history: &Vec<U256>) -> SearchResult {
     let mut tt = TranspositionTable::new();
-    reset_stats();
     tt.insert(hash_u64(get_white_win()), LOSS_SCORE, f32::INFINITY);
     tt.insert(hash_u64(get_black_win()), LOSS_SCORE, f32::INFINITY);
     tt.insert(hash_u64(get_draw()), DRAW_SCORE, f32::INFINITY);
     let mut local_history = history.clone();
     let (value, best_move) = alphabeta(
+        root,
+        0,
+        MAX_ENERGY,
+        -1.5,
+        1.5,
+        &mut local_history,
+        &mut tt,
+    );
+    SearchResult {
+        value,
+        best_move,
+    }
+}
+
+fn alphabeta(
+    state: U256,
+    depth: usize,
+    energy: f32,
+    mut alpha: f32,
+    beta: f32,
+    history: &mut Vec<U256>,
+    tt: &mut TranspositionTable,
+) -> (f32, Option<U256>) {
+    let key = hash_u64(state);
+    if history.contains(&state) {
+        return (DRAW_SCORE, None);
+    }
+    history.push(state);
+    if let Some(v) = tt.get(key, energy) {
+        history.pop();
+        return (v, None);
+    }
+    if energy <= 0.0 {
+        let v = evaluate(state);
+        tt.insert(key, v, energy);
+        history.pop();
+        return (v, None);
+    }
+    let moves = generate_moves(state);
+    let mut scored_moves: Vec<(U256, f32)> = moves
+        .into_iter()
+        .map(|m| {
+            let bonus = instability_bonus(m);
+            let child_energy = energy - DEPTH_PENALTY + bonus;
+            (m, child_energy)
+        })
+        .collect();
+    scored_moves.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1).unwrap()
+    });
+    let mut best_value = -2.0;
+    let mut best_move = None;
+    for (child, child_energy) in scored_moves {
+        let (mut value, _) = alphabeta(
+            child,
+            depth+1,
+            child_energy,
+            -beta,
+            -alpha,
+            history,
+            tt,
+        );
+        value = -value;
+        if value > best_value {
+            best_value = value;
+            best_move = Some(child);
+        }
+        alpha = alpha.max(value);
+        if alpha >= beta {
+            break;
+        }
+    }
+    history.pop();
+    (best_value, best_move)
+}
+pub fn debug_search(root: U256, history: &Vec<U256>) -> SearchResult {
+    let mut tt = TranspositionTable::new();
+    reset_stats();
+    tt.insert(hash_u64(get_white_win()), LOSS_SCORE, f32::INFINITY);
+    tt.insert(hash_u64(get_black_win()), LOSS_SCORE, f32::INFINITY);
+    tt.insert(hash_u64(get_draw()), DRAW_SCORE, f32::INFINITY);
+    let mut local_history = history.clone();
+    let (value, best_move) = debug_alphabeta(
         root,
         0,
         MAX_ENERGY,
@@ -92,7 +174,7 @@ pub fn search(root: U256, history: &Vec<U256>) -> SearchResult {
     }
 }
 
-fn alphabeta(
+fn debug_alphabeta(
     state: U256,
     depth: usize,
     energy: f32,
@@ -116,16 +198,6 @@ fn alphabeta(
         inc_tt_hits();
         return (v, None);
     }
-    if state == get_white_win() {
-        history.pop();
-        debug_log(depth, "white win");
-        return (WIN_SCORE, None);
-    }
-    if state == get_black_win() {
-        history.pop();
-        debug_log(depth, "black win");
-        return (LOSS_SCORE, None);
-    }
     if energy <= 0.0 {
         let v = evaluate(state);
         tt.insert(key, v, energy);
@@ -134,12 +206,6 @@ fn alphabeta(
         return (v, None);
     }
     let moves = generate_moves(state);
-    if moves.is_empty() {
-        tt.insert(key, LOSS_SCORE, energy);
-        history.pop();
-        debug_log(depth, "empty moves");
-        return (LOSS_SCORE, None);
-    }
     let mut scored_moves: Vec<(U256, f32)> = moves
         .into_iter()
         .map(|m| {
@@ -154,7 +220,7 @@ fn alphabeta(
     let mut best_value = -2.0;
     let mut best_move = None;
     for (child, child_energy) in scored_moves {
-        let (mut value, _) = alphabeta(
+        let (mut value, _) = debug_alphabeta(
             child,
             depth+1,
             child_energy,
