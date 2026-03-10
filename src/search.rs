@@ -21,7 +21,7 @@ use crate::eval::{
 const DEPTH_PENALTY: f32 = 0.5;
 const MAX_ENERGY: f32 = 1.5;
 
-const WIN_SCORE: f32 = 1.0;
+//const WIN_SCORE: f32 = 1.0;
 const LOSS_SCORE: f32 = -1.0;
 const DRAW_SCORE: f32 = 0.0;
 
@@ -149,7 +149,7 @@ fn alphabeta(
         }
     }
     history.pop();
-    (best_value, best_move)
+    (best_value*0.99999, best_move)
 }
 pub fn debug_search(root: U256, history: &Vec<U256>) -> SearchResult {
     let mut tt = TranspositionTable::new();
@@ -217,6 +217,8 @@ fn debug_alphabeta(
     scored_moves.sort_by(|a, b| {
         b.1.partial_cmp(&a.1).unwrap()
     });
+    let k = (scored_moves.len() as f32 * 0.05) as usize;
+    scored_moves.rotate_right(k);
     let mut best_value = -2.0;
     let mut best_move = None;
     for (child, child_energy) in scored_moves {
@@ -236,7 +238,7 @@ fn debug_alphabeta(
         }
         alpha = alpha.max(value);
         if alpha >= beta {
-            debug_log(depth, "alphabeta potatoura");
+            debug_log(depth, "alphabeta potatura");
             break;
         }
     }

@@ -1,6 +1,5 @@
 use colored::{ColoredString, Colorize};
 use primitive_types::U256;
-use serde_json::Value;
 
 use crate::rot_table::ROT_TABLE;
 
@@ -222,53 +221,6 @@ pub fn canonize(state: U256) -> U256 {
     }
 
     canonical
-}
-pub fn parse_json_state(json: &str) -> U256 {
-    let value: Value =
-        serde_json::from_str(json)
-            .expect("Invalid JSON from server");
-    let board = value["board"]
-        .as_array()
-        .expect("board not array");
-    let turn = value["turn"]
-        .as_str()
-        .expect("turn missing");
-    let mut state = U256::zero();
-    let mut king_row = 0usize;
-    let mut king_col = 0usize;
-    for row in 0..9 {
-        let row_array = board[row]
-            .as_array()
-            .expect("row not array");
-        for col in 0..9 {
-            let cell = row_array[col]
-                .as_str()
-                .expect("cell not string");
-            let idx = index(row, col);
-            match cell {
-                "WHITE" => {
-                    state |= U256::one() << idx;
-                }
-                "BLACK" => {
-                    state |= U256::one() << (81 + idx);
-                }
-                "KING" => {
-                    state |= U256::one() << idx;
-                    king_row = row;
-                    king_col = col;
-                }
-                "EMPTY" | "THRONE" => {}
-                _ => {}
-            }
-        }
-    }
-    state |= U256::from(king_row as u32) << (2 * 81);
-    state |= U256::from(king_col as u32) << (2 * 81 + 4);
-    if turn == "WHITE" {
-        state |= U256::one() << (2 * 81 + 8);
-    }
-
-    state
 }
 
 pub fn parse_position(input: &str) -> U256 {
@@ -595,7 +547,7 @@ pub fn extract_move(
             let sc = from % 9;
             let er = to / 9;
             let ec = to % 9;
-            if (sr==er) ^ (sc==ec) {
+            if check_move(before, sr,sc,er,ec) {
                 let candidate = canonize(
                     apply_move(before, sr, sc, er, ec)
                 );
@@ -606,4 +558,33 @@ pub fn extract_move(
         }
     }
     None
+}
+
+pub fn check_move(state: U256, sr:usize, sc:usize, er:usize, ec:usize) -> bool {
+    if sr>=9 || sc>=9 || er>=9 || ec>=9 {
+        return false;
+    }
+    if !((sr==er) ^ (sc==ec)) {
+        return false;
+    }
+    let is_white_turn = turn(state);
+    if !((is_white(state,sr,sc) && is_white_turn) || (is_black(state,sr,sc) && !is_white_turn)) {
+        return false;
+    }
+    let can_enter_citadels = (!turn(state)) && is_citadel(sr, sc);
+    let dr: isize = (er as isize - sr as isize).signum();
+    let dc: isize = (ec as isize - sc as isize).signum();
+    let mut r = sr;
+    let mut c = sc;
+    while r !=  er || c != ec {
+        r = (r as isize + dr) as usize;
+        c = (c as isize + dc) as usize;
+        if is_occupied(state, r, c)
+            || is_throne(r, c)
+            || (is_citadel(r, c) && !can_enter_citadels)
+        {
+            return false;
+        }
+    }
+    return true;
 }

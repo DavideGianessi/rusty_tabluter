@@ -40,12 +40,6 @@ fn send_name(name: &str) -> std::io::Result<()> {
     write_string(&mut stream, name)
 }
 
-/*
-pub fn get_state() -> std::io::Result<U256> {
-    let mut stream = STREAM.get().unwrap().lock().unwrap();
-    let json = read_string(&mut stream)?;
-    Ok(parse_json_to_bitboard(&json))
-}*/
 pub fn get_state() -> std::io::Result<U256> {
     let mut stream = STREAM.get().unwrap().lock().unwrap();
 
