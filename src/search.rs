@@ -12,6 +12,7 @@ use crate::board::{
     get_white_win,
     get_black_win,
     get_draw,
+    canonize,
 };
 use crate::eval::{
     evaluate,
@@ -71,9 +72,9 @@ impl TranspositionTable {
 
 pub fn search(root: U256, history: &Vec<U256>) -> SearchResult {
     let mut tt = TranspositionTable::new();
-    tt.insert(hash_u64(get_white_win()), LOSS_SCORE, f32::INFINITY);
-    tt.insert(hash_u64(get_black_win()), LOSS_SCORE, f32::INFINITY);
-    tt.insert(hash_u64(get_draw()), DRAW_SCORE, f32::INFINITY);
+    tt.insert(hash_u64(canonize(get_white_win())), LOSS_SCORE, f32::INFINITY);
+    tt.insert(hash_u64(canonize(get_black_win())), LOSS_SCORE, f32::INFINITY);
+    tt.insert(hash_u64(canonize(get_draw())), DRAW_SCORE, f32::INFINITY);
     let mut local_history = history.clone();
     let (value, best_move) = alphabeta(
         root,
@@ -99,7 +100,7 @@ fn alphabeta(
     history: &mut Vec<U256>,
     tt: &mut TranspositionTable,
 ) -> (f32, Option<U256>) {
-    let key = hash_u64(state);
+    let key = hash_u64(canonize(state));
     if history.contains(&state) {
         return (DRAW_SCORE, None);
     }
@@ -114,7 +115,7 @@ fn alphabeta(
         history.pop();
         return (v, None);
     }
-    let moves = generate_moves(state);
+    let moves = generate_moves(state,history);
     let mut scored_moves: Vec<(U256, f32)> = moves
         .into_iter()
         .map(|m| {
@@ -154,9 +155,9 @@ fn alphabeta(
 pub fn debug_search(root: U256, history: &Vec<U256>) -> SearchResult {
     let mut tt = TranspositionTable::new();
     reset_stats();
-    tt.insert(hash_u64(get_white_win()), LOSS_SCORE, f32::INFINITY);
-    tt.insert(hash_u64(get_black_win()), LOSS_SCORE, f32::INFINITY);
-    tt.insert(hash_u64(get_draw()), DRAW_SCORE, f32::INFINITY);
+    tt.insert(hash_u64(canonize(get_white_win())), LOSS_SCORE, f32::INFINITY);
+    tt.insert(hash_u64(canonize(get_black_win())), LOSS_SCORE, f32::INFINITY);
+    tt.insert(hash_u64(canonize(get_draw())), DRAW_SCORE, f32::INFINITY);
     let mut local_history = history.clone();
     let (value, best_move) = debug_alphabeta(
         root,
@@ -175,7 +176,7 @@ pub fn debug_search(root: U256, history: &Vec<U256>) -> SearchResult {
 }
 
 fn debug_alphabeta(
-    state: U256,
+    mut state: U256,
     depth: usize,
     energy: f32,
     mut alpha: f32,
@@ -184,12 +185,12 @@ fn debug_alphabeta(
     tt: &mut TranspositionTable,
 ) -> (f32, Option<U256>) {
     inc_nodes();
-    let key = hash_u64(state);
+    let key = hash_u64(canonize(state));
     debug_log(depth, &format!("state={}",state));
     debug_log(depth, &format!("energy={:.2} alpha={:.2} beta={:.2}",energy,alpha,beta));
     if history.contains(&state) {
         debug_log(depth, "draw by repetition");
-        return (DRAW_SCORE, None);
+        state=get_draw();
     }
     history.push(state);
     if let Some(v) = tt.get(key, energy) {
@@ -205,7 +206,7 @@ fn debug_alphabeta(
         debug_log(depth, &format!("out of energy evalution:{:.2}",v));
         return (v, None);
     }
-    let moves = generate_moves(state);
+    let moves = generate_moves(state,history);
     let mut scored_moves: Vec<(U256, f32)> = moves
         .into_iter()
         .map(|m| {

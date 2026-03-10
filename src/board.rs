@@ -361,8 +361,9 @@ fn pop_piece(pieces: &mut u128) -> Option<usize> {
     Some(tz)
 }
 
-pub fn generate_moves(state: U256) -> Vec<U256> {
+pub fn generate_moves(state: U256, history: &Vec<U256>) -> Vec<U256> {
     let mut moves: Vec<U256> = vec![];
+    let mut moves_canonized: Vec<U256> = vec![];
     let mut pieces = if turn(state) {
         white_bitboard(state)
     } else {
@@ -386,9 +387,13 @@ pub fn generate_moves(state: U256) -> Vec<U256> {
                 {
                     break;
                 }
-                let new_state = canonize(apply_move(state, row, col, ur, uc));
-                if !moves.contains(&new_state) {
+                let mut new_state = apply_move(state, row, col, ur, uc);
+                if history.contains(&new_state){
+                    new_state = get_draw();
+                }
+                if !moves_canonized.contains(&canonize(new_state)) {
                     moves.push(new_state);
+                    moves_canonized.push(canonize(new_state));
                 }
 
                 r += dr;
@@ -398,6 +403,7 @@ pub fn generate_moves(state: U256) -> Vec<U256> {
     }
     moves
 }
+
 
 #[inline(always)]
 pub fn has_legal_moves(state: U256) -> bool {
@@ -540,6 +546,7 @@ fn apply_move(
 pub fn extract_move(
     before: U256,
     after: U256,
+    history: &Vec<U256>,
 ) -> Option<(usize, usize, usize, usize)> {
     for from in 0..81 {
         for to in 0..81 {
@@ -548,9 +555,10 @@ pub fn extract_move(
             let er = to / 9;
             let ec = to % 9;
             if check_move(before, sr,sc,er,ec) {
-                let candidate = canonize(
-                    apply_move(before, sr, sc, er, ec)
-                );
+                let mut candidate = apply_move(before, sr, sc, er, ec);
+                if history.contains(&candidate){
+                    candidate = get_draw();
+                }
                 if candidate == after {
                     return Some((sr,sc,er,ec));
                 }

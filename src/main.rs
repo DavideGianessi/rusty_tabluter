@@ -13,7 +13,7 @@ mod stats;
 mod client;
 mod interactive;
 
-use crate::board::{canonize, format_position, parse_position, extract_move, get_white_win, get_black_win, get_draw, turn};
+use crate::board::{format_position, parse_position, extract_move, get_white_win, get_black_win, get_draw, turn};
 use crate::search::{search,debug_search};
 use crate::client::{connect,get_state,send_move};
 use crate::interactive::interactive;
@@ -134,7 +134,7 @@ fn main() {
 
             loop {
                 let state: U256 = get_state().unwrap();
-                println!("state received: {}\n{}", canonize(state),format_position(state));
+                println!("state received: {}\n{}", state,format_position(state));
 
                 if state == get_white_win() {
                     println!("WHITE WIN");
@@ -150,17 +150,17 @@ fn main() {
                 }
 
                 if turn(state) != is_white {
-                    history.push(canonize(state));
+                    history.push(state);
                     continue;
                 }
 
                 let result = search(state, &history);
-                history.push(canonize(state));
 
                 let best_state = result.best_move.unwrap();
                 let best_value = result.value;
 
-                let (start_row, start_col, end_row, end_col) = extract_move(state, best_state).unwrap();
+                let (start_row, start_col, end_row, end_col) = extract_move(state, best_state, &history).unwrap();
+                history.push(state);
 
                 println!(
                     "mossa: {} {} -> {} {}\nvalue: {}",

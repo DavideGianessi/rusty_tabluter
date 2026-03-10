@@ -4,7 +4,7 @@ use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 use termion::{clear, cursor};
 
-use crate::board::{canonize, generate_moves, get_printable_board, parse_position};
+use crate::board::{generate_moves, get_printable_board, parse_position};
 use crate::search::{search};
 
 pub fn interactive() {
@@ -20,10 +20,10 @@ OOOOBOOOO\n\
 OOOBBBOOO\n\
 turn: W";
 
-    let mut state = canonize(parse_position(start_position));
+    let mut state = parse_position(start_position);
 
     let mut history: Vec<U256> = Vec::new();
-    let mut moves: Vec<U256> = generate_moves(state);
+    let mut moves: Vec<U256> = generate_moves(state, &history);
     let mut selected: usize = 0;
 
     let stdin = io::stdin();
@@ -78,8 +78,8 @@ turn: W";
             termion::event::Key::Char('j') => {
                 if !moves.is_empty() {
                     history.push(state);
-                    state = canonize(moves[selected]);
-                    moves = generate_moves(state);
+                    state = moves[selected];
+                    moves = generate_moves(state,&history);
                     selected = 0;
                 }
             }
@@ -87,7 +87,7 @@ turn: W";
             termion::event::Key::Char('k') => {
                 if let Some(prev) = history.pop() {
                     state = prev;
-                    moves = generate_moves(state);
+                    moves = generate_moves(state,&history);
                     selected = 0;
                 }
             }
