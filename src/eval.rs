@@ -1,33 +1,29 @@
-use primitive_types::U256;
+use crate::incremental::State;
+use crate::weights::{Weights,Params};
 
-pub fn evaluate(state: U256) -> f32 {
-    let white_bits: u128 = (state & ((U256::one() << 81) - 1))
-        .low_u128();
-    let black_bits: u128 = ((state >> 81) & ((U256::one() << 81) - 1))
-        .low_u128();
-    //let king_row: u32 = ((state >> (2 * 81)) & U256::from(0xF))
-    //    .low_u32();
-    //let king_col: u32 = ((state >> (2 * 81 + 4)) & U256::from(0xF))
-    //    .low_u32();
-    let turn: bool = ((state >> (2 * 81 + 8)) & U256::one()) != U256::zero();
 
-    let white_count = white_bits.count_ones() as f32;
-    let black_count = black_bits.count_ones() as f32;
 
-    let white_score = white_count;
-    let black_score = black_count * 0.75;
+pub fn evaluate(state: &State, w: &Weights) -> (i32, i32) {
+    let mut score = 0;
+    let mut instab = 0;
 
-    let total = white_score + black_score + 1e-6;
+    let w_cnt = state.white.count_ones() as i32;
+    let b_cnt = state.black.count_ones() as i32;
 
-    let eval = (black_score - white_score) / total;
+    score += w_cnt * w.material_pawn.eval;
+    instab += w_cnt * w.material_pawn.instab;
 
-    if !turn {
-        eval
-    } else {
-        -eval
-    }
-}
+    score -= b_cnt * w.material_pawn.eval;
+    instab += b_cnt * w.material_pawn.instab;
 
-pub fn instability_bonus(_state: U256) -> f32 {
-    0.0
+    let king_near_exit = (state.king & NEAR_EXIT_MASK).count_ones() as i32;
+    score += king_near_exit * w.king_near_exit.eval;
+    instab += king_near_exit * w.king_near_exit.instab;
+
+    let shield_pieces = (state.white & SHIELD_MASK).count_ones() as i32;
+    score += shield_pieces * w.shield_pawn.eval;
+    instab += shield_pieces * w.shield_pawn.instab;
+
+
+    (score, instab)
 }

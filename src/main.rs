@@ -1,23 +1,24 @@
-use std::env;
-use std::io::{self,BufRead};
-use std::str::FromStr;
+//use std::env;
+//use std::io::{self,BufRead};
+//use std::str::FromStr;
 
-use primitive_types::U256;
+//use primitive_types::U256;
 
 mod board;
-mod rot_table;
-mod search;
-mod eval;
-mod debug;
-mod stats;
-mod client;
+mod zobrist_keys;
+//mod search;
+//mod eval;
+//mod debug;
+//mod stats;
+//mod client;
 mod interactive;
 
-use crate::board::{format_position, parse_position, extract_move, get_white_win, get_black_win, get_draw, turn};
-use crate::search::{search,debug_search};
-use crate::client::{connect,get_state,send_move};
+//use crate::board::{format_position, parse_position, extract_move, get_white_win, get_black_win, get_draw, turn};
+//use crate::search::{search,debug_search};
+//use crate::client::{connect,get_state,send_move};
 use crate::interactive::interactive;
 
+/*
 fn print_help() {
     println!("Usage:");
 
@@ -57,8 +58,11 @@ fn read_board() -> U256 {
     let board_string = lines.join("\n");
     parse_position(&board_string)
 }
+*/
 
 fn main() {
+    interactive();
+    /*
     let args: Vec<String> = env::args().skip(1).collect();
 
     if args.is_empty(){
@@ -177,5 +181,6 @@ fn main() {
             }
         }
     }
+*/
 }
 

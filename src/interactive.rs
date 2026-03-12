@@ -1,30 +1,33 @@
-use primitive_types::U256;
-use std::io::{self, Write};
+use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
-use termion::{clear, cursor};
+use termion::{clear, cursor, color, style};
+use std::io::{self, Write};
 
-use crate::board::{generate_moves, get_printable_board, parse_position};
-use crate::search::{search};
+use crate::board::{State};
+
+const CITADELS: u128 = 264600106062302366670904;
+const THRONE: u128 = 1099511627776;
+const ESCAPE: u128 = 937403599922078434067142;
+
+fn is_citadel(row:u8, col:u8)->bool {
+    ((CITADELS >> (row * 9 + col)) & 1) != 0
+}
+fn is_throne(row:u8, col:u8)->bool {
+    ((THRONE >> (row * 9 + col)) & 1) != 0
+}
+fn is_escape(row:u8, col:u8)->bool {
+    ((ESCAPE >> (row * 9 + col)) & 1) != 0
+}
 
 pub fn interactive() {
-
-    let start_position = "OOOBBBOOO\n\
-OOOOBOOOO\n\
-OOOOWOOOO\n\
-BOOOWOOOB\n\
-BBWWKWWBB\n\
-BOOOWOOOB\n\
-OOOOWOOOO\n\
-OOOOBOOOO\n\
-OOOBBBOOO\n\
-turn: W";
-
-    let mut state = parse_position(start_position);
-
-    let mut history: Vec<U256> = Vec::new();
-    let mut moves: Vec<U256> = generate_moves(state, &history);
-    let mut selected: usize = 0;
+    let mut state = State::new();
+    let mut history: Vec<State> = Vec::new();
+    let mut history_real: Vec<u64> = Vec::new();
+    
+    let mut cursor_r: i8 = 4;
+    let mut cursor_c: i8 = 4;
+    let mut selected_piece: Option<(u8, u8)> = None;
 
     let stdin = io::stdin();
     let mut stdout = io::stdout().into_raw_mode().unwrap();
@@ -32,28 +35,44 @@ turn: W";
 
     loop {
         write!(stdout, "{}{}", clear::All, cursor::Goto(1, 1)).unwrap();
+        let h = state.hash();
+        if h < 4 {
+            let msg = match h {
+                0 => "VITTORIA BIANCO",
+                1 => "VITTORIA NERO",
+                2 => "PATTA",
+                3 => "PATTA",
+                _ => unreachable!(),
+            };
+            write!(stdout, "\r\n\n   {}\r\n", msg.to_string()).unwrap();
+            write!(stdout, "\r\n   [U] Undo | [Q] Quit\r\n").unwrap();
+            stdout.flush().unwrap();
+        } else {
+            let mut all_moves = Vec::new();
+            state.generate_moves(&mut all_moves);
 
-        write!(stdout, "STATE: {}\r\n", state).unwrap();
+            let mut capture_mask: u128 = 0;
+            let legal_targets: Vec<(u8, u8)> = if let Some((sr, sc)) = selected_piece {
+                let targets: Vec<(u8, u8)> = all_moves.iter()
+                    .filter(|m| m.fr == sr && m.fc == sc)
+                    .map(|m| (m.tr, m.tc))
+                    .collect();
 
-        let board_string = get_printable_board(state);
-        write!(stdout, "{}", board_string).unwrap();
+                if let Some(mv) = all_moves.iter().find(|m| m.fr == sr && m.fc == sc && m.tr == cursor_r as u8 && m.tc == cursor_c as u8) {
+                    capture_mask = mv.captured;
+                }
+                targets
+            } else {
+                Vec::new()
+            };
 
-        write!(stdout, "\r\nMoves available: {}\r\n", moves.len()).unwrap();
-        write!(stdout, "Selected: {}\r\n", selected).unwrap();
-        //write!(stdout, "move chosen: {}\r\n", extract_move(state,moves[selected]).unwrap()).unwrap();
-
-        write!(stdout, "\r\nPreview: {}\r\n", moves[selected]).unwrap();
-        let selected_board_string = get_printable_board(moves[selected]);
-        write!(stdout, "{}", selected_board_string).unwrap();
-
-        write!(stdout, "\r\nControls:\r\n").unwrap();
-        write!(stdout, "h/l = prev/next move\r\n").unwrap();
-        write!(stdout, "j = commit move\r\n").unwrap();
-        write!(stdout, "k = undo\r\n").unwrap();
-        write!(stdout, "s = evaluate\r\n").unwrap();
-        write!(stdout, "q = quit\r\n").unwrap();
-
-        stdout.flush().unwrap();
+            render_board(&mut stdout, &state, cursor_r as u8, cursor_c as u8, selected_piece, &legal_targets, capture_mask);
+            
+            write!(stdout, "\r\n Turno: {} | Hash: {}\r\n", 
+                if state.white_to_move { "BIANCO" } else { "NERO" }, state.canonical_hash()).unwrap();
+            write!(stdout, " [WASD/HJKL] Muovi | [SPAZIO] Seleziona | [U] Undo | [Q] Quit\r\n").unwrap();
+            stdout.flush().unwrap();
+        }
 
         let key = match keys.next() {
             Some(Ok(k)) => k,
@@ -61,55 +80,84 @@ turn: W";
         };
 
         match key {
-            termion::event::Key::Char('q') => break,
-
-            termion::event::Key::Char('h') => {
-                if selected > 0 {
-                    selected -= 1;
-                }
-            }
-
-            termion::event::Key::Char('l') => {
-                if selected + 1 < moves.len() {
-                    selected += 1;
-                }
-            }
-
-            termion::event::Key::Char('j') => {
-                if !moves.is_empty() {
-                    history.push(state);
-                    state = moves[selected];
-                    moves = generate_moves(state,&history);
-                    selected = 0;
-                }
-            }
-
-            termion::event::Key::Char('k') => {
+            Key::Char('q') => break,
+            Key::Char('u') => {
                 if let Some(prev) = history.pop() {
                     state = prev;
-                    moves = generate_moves(state,&history);
-                    selected = 0;
+                    selected_piece = None;
+                    history_real.pop();
                 }
             }
-            termion::event::Key::Char('s') => {
-                if !moves.is_empty() {
-                    let history_clone = history.clone();
-                    let result = search(state, &history_clone);
-                    if let Some(best_state) = result.best_move {
-                        if let Some(index) = moves.iter().position(|&m| m == best_state) {
-                            selected = index;
-                        }
-                        write!(
-                            stdout,
-                            "\r\nEngine value: {:.3}\r\n",
-                            result.value
-                        ).unwrap();
-                        stdout.flush().unwrap();
+            Key::Char('w') | Key::Char('k') => if cursor_r > 0 { cursor_r -= 1 },
+            Key::Char('s') | Key::Char('j') => if cursor_r < 8 { cursor_r += 1 },
+            Key::Char('a') | Key::Char('h') => if cursor_c > 0 { cursor_c -= 1 },
+            Key::Char('d') | Key::Char('l') => if cursor_c < 8 { cursor_c += 1 },
+            
+            Key::Char(' ') => {
+                let r = cursor_r as u8;
+                let c = cursor_c as u8;
+                if let Some((sr, sc)) = selected_piece {
+                    let mut moves = Vec::new();
+                    state.generate_moves(&mut moves);
+                    if let Some(mv) = moves.iter().find(|m| m.fr == sr && m.fc == sc && m.tr == r && m.tc == c) {
+                        history.push(state);
+                        let the_hash = state.hash();
+                        state.apply_move(mv, &history_real);
+                        history_real.push(the_hash);
+                        selected_piece = None;
+                    } else {
+                        selected_piece = None;
+                    }
+                } else {
+                    if (state.white_to_move && state.is_white(r, c)) || (!state.white_to_move && state.is_black(r, c)) {
+                        selected_piece = Some((r, c));
                     }
                 }
             }
-
             _ => {}
         }
+    }
+}
+
+fn render_board<W: Write>(stdout: &mut W, state: &State, cur_r: u8, cur_c: u8, sel: Option<(u8, u8)>, targets: &[(u8, u8)], capture_mask: u128) {
+    let header = "   +-----+-----+-----+-----+-----+-----+-----+-----+-----+\r\n";
+    write!(stdout, "{}", header).unwrap();
+
+    for r in 0..9 {
+        write!(stdout, " {} |", r).unwrap();
+        for c in 0..9 {
+            let idx = r * 9 + c;
+            let bit = 1u128 << idx;
+            
+            let is_cursor = r == cur_r && c == cur_c;
+            let is_target = targets.contains(&(r, c));
+            let is_captured = (capture_mask & bit) != 0;
+
+            let bg = if is_captured { "\x1b[48;5;124m" }
+                     else if is_cursor { "\x1b[48;5;248m" } 
+                     else if is_target { "\x1b[48;5;22m" } 
+                     else if is_throne(r, c) { "\x1b[48;5;178m" } 
+                     else if is_citadel(r, c) { "\x1b[48;5;243m" } 
+                     else if is_escape(r, c) { "\x1b[48;5;39m" } 
+                     else { "" };
+
+            let reset_bg = if bg != "" { "\x1b[49m" } else { "" };
+            
+            let piece = if state.is_king(r, c) {
+                format!("{}{}{} K {}", color::Fg(color::Yellow), style::Bold, bg, color::Fg(color::Reset))
+            } else if state.is_white(r, c) { 
+                format!("{}{}{} W {}", color::Fg(color::White), style::Bold, bg, color::Fg(color::Reset))
+            } else if state.is_black(r, c) { 
+                format!("{}{}{} B {}", color::Fg(color::LightRed), style::Bold, bg, color::Fg(color::Reset))
+            } else { 
+                format!("{}   ", bg)
+            };
+
+            let l_brk = if sel == Some((r, c)) { ">" } else if is_cursor { "[" } else { " " };
+            let r_brk = if sel == Some((r, c)) { "<" } else if is_cursor { "]" } else { " " };
+
+            write!(stdout, "{}{}{}{}{}|", bg, l_brk, piece, r_brk, reset_bg).unwrap();
+        }
+        write!(stdout, "\r\n{}", header).unwrap();
     }
 }
