@@ -99,14 +99,14 @@ impl State {
         s
     }
 
-    pub fn is_black(&self, row: u8,col: u8) -> bool {
-        ((self.black >> (row*9+col)) & 1) !=0
+    pub fn is_black(&self, row: u8, col: u8) -> bool {
+        ((self.black >> (row * 9 + col)) & 1) != 0
     }
-    pub fn is_white(&self, row: u8,col: u8) -> bool {
-        ((self.white >> (row*9+col)) & 1) !=0
+    pub fn is_white(&self, row: u8, col: u8) -> bool {
+        ((self.white >> (row * 9 + col)) & 1) != 0
     }
-    pub fn is_king(&self, row: u8,col: u8) -> bool {
-        ((self.king >> (row*9+col)) & 1) !=0
+    pub fn is_king(&self, row: u8, col: u8) -> bool {
+        ((self.king >> (row * 9 + col)) & 1) != 0
     }
 
     #[allow(dead_code)]

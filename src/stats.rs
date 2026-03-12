@@ -23,9 +23,12 @@ pub fn print_stats() {
     let hits = TT_HITS.load(Ordering::Relaxed);
 
     debug_log(0, &format!("Nodes visited: {}", nodes));
-    debug_log(0,&format!("TT hits: {}", hits));
+    debug_log(0, &format!("TT hits: {}", hits));
 
     if nodes > 0 {
-        debug_log(0, &format!("TT hit rate: {:.2}%", (hits as f64 / nodes as f64) * 100.0));
+        debug_log(
+            0,
+            &format!("TT hit rate: {:.2}%", (hits as f64 / nodes as f64) * 100.0),
+        );
     }
 }

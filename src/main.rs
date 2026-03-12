@@ -7,7 +7,8 @@
 mod board;
 mod zobrist_keys;
 //mod search;
-//mod eval;
+mod eval;
+mod weights;
 //mod debug;
 //mod stats;
 //mod client;
