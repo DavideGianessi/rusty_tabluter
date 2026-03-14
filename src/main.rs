@@ -1,4 +1,4 @@
-//use std::env;
+use std::env;
 //use std::io::{self,BufRead};
 //use std::str::FromStr;
 
@@ -6,20 +6,20 @@
 
 mod board;
 mod zobrist_keys;
-//mod search;
+mod search;
 mod eval;
 mod weights;
 //mod debug;
 //mod stats;
-//mod client;
+mod client;
 mod interactive;
 
-//use crate::board::{format_position, parse_position, extract_move, get_white_win, get_black_win, get_draw, turn};
-//use crate::search::{search,debug_search};
-//use crate::client::{connect,get_state,send_move};
+use crate::board::State;
+use crate::search::{search};
+use crate::client::{connect,get_game_state,send_move};
 use crate::interactive::interactive;
+use crate::weights::Weights;
 
-/*
 fn print_help() {
     println!("Usage:");
 
@@ -38,6 +38,7 @@ fn print_help() {
     println!("      Show this help.");
 }
 
+/*
 fn parse_u256(arg: &str) -> Option<U256> {
     if let Ok(v) = U256::from_str(arg) {
         return Some(v);
@@ -62,8 +63,7 @@ fn read_board() -> U256 {
 */
 
 fn main() {
-    interactive();
-    /*
+    //interactive();
     let args: Vec<String> = env::args().skip(1).collect();
 
     if args.is_empty(){
@@ -78,28 +78,6 @@ fn main() {
 
         "--interactive" => {
             interactive();
-        }
-
-        "-s" => {
-            if args.len() > 2 {
-                print_help();
-                return;
-            }
-
-            let state = if args.len() == 2 {
-                match parse_u256(&args[1]) {
-                    Some(v) => v,
-                    None => {
-                        println!("Invalid U256");
-                        return;
-                    }
-                }
-            } else {
-                read_board()
-            };
-
-            let history: Vec<U256> = Vec::new();
-            debug_search(state, &history);
         }
 
         _ => {
@@ -135,44 +113,48 @@ fn main() {
                 println!("network error");
             }
 
-            let mut history: Vec<U256> = Vec::new();
+            let mut history: Vec<u64> = Vec::new();
+            let weights = Weights::new();
 
             loop {
-                let state: U256 = get_state().unwrap();
-                println!("state received: {}\n{}", state,format_position(state));
+                let state: State = get_game_state().unwrap();
+                println!("state received:\n{}", state.to_position_string());
 
-                if state == get_white_win() {
+                if state.hash() == 0 {
                     println!("WHITE WIN");
                     return;
                 }
-                if state == get_black_win() {
+                if state.hash() == 1 {
                     println!("BLACK WIN");
                     return;
                 }
-                if state == get_draw() {
+                if state.hash() == 2 || state.hash() == 3 {
                     println!("DRAW");
                     return;
                 }
 
-                if turn(state) != is_white {
-                    history.push(state);
+                if state.white_to_move != is_white {
+                    history.push(state.hash());
                     continue;
                 }
 
-                let result = search(state, &history);
+                let result = search(state, &history, &weights);
 
-                let best_state = result.best_move.unwrap();
+                let best_move = result.best_move.unwrap();
                 let best_value = result.value;
 
-                let (start_row, start_col, end_row, end_col) = extract_move(state, best_state, &history).unwrap();
-                history.push(state);
+                let start_row = best_move.fr;
+                let start_col = best_move.fc;
+                let end_row = best_move.tr;
+                let end_col = best_move.tc;
+                history.push(state.hash());
 
                 println!(
                     "mossa: {} {} -> {} {}\nvalue: {}",
                     start_row, start_col, end_row, end_col,best_value
                 );
 
-                let res = send_move(start_row, start_col, end_row, end_col);
+                let res = send_move(start_row as usize, start_col as usize, end_row as usize, end_col as usize);
 
                 if !res.is_ok() {
                     println!("network error");
@@ -182,6 +164,5 @@ fn main() {
             }
         }
     }
-*/
 }
 

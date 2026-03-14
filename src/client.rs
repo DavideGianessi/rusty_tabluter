@@ -2,20 +2,15 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::{Mutex, OnceLock};
 
-use primitive_types::U256;
 use serde_json::Value;
 
-use crate::board::{get_white_win, get_black_win, get_draw};
+use crate::board::State;
 
 static STREAM: OnceLock<Mutex<TcpStream>> = OnceLock::new();
 static ROLE_IS_WHITE: OnceLock<bool> = OnceLock::new();
 
 const WHITE_PORT: u16 = 5800;
 const BLACK_PORT: u16 = 5801;
-
-fn index(row: usize, col: usize) -> usize {
-    row * 9 + col
-}
 
 pub fn connect(server_ip: &str, role_white: bool) -> std::io::Result<()> {
     let port = if role_white { WHITE_PORT } else { BLACK_PORT };
@@ -39,26 +34,63 @@ fn send_name(name: &str) -> std::io::Result<()> {
     let mut stream = STREAM.get().unwrap().lock().unwrap();
     write_string(&mut stream, name)
 }
-
-pub fn get_state() -> std::io::Result<U256> {
+pub fn get_game_state() -> std::io::Result<State> {
     let mut stream = STREAM.get().unwrap().lock().unwrap();
+    
+    // Leggi lunghezza (4 bytes BE) e poi il corpo
+    let mut len_buf = [0u8; 4];
+    stream.read_exact(&mut len_buf)?;
+    let len = u32::from_be_bytes(len_buf) as usize;
+    let mut buffer = vec![0u8; len];
+    stream.read_exact(&mut buffer)?;
 
-    let json = read_string(&mut stream)?;
+    let v: Value = serde_json::from_str(&String::from_utf8_lossy(&buffer))
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-    let turn = v["turn"].as_str().unwrap();
+    let turn_str = v["turn"].as_str().unwrap_or("");
+    
+    // Costruiamo lo State
+    let mut white = 0u128;
+    let mut black = 0u128;
+    let mut king = 0u128;
+    let white_to_move = turn_str == "WHITE";
 
-    let state = match turn {
-        "WHITE" | "BLACK" => parse_json_to_bitboard(&json),
+    // Se siamo in un turno normale, popoliamo la board
+    if turn_str == "WHITE" || turn_str == "BLACK" {
+        if let Some(board_array) = v["board"].as_array() {
+            for r in 0..9 {
+                if let Some(row_array) = board_array[r].as_array() {
+                    for c in 0..9 {
+                        let bit = 1u128 << (r * 9 + c);
+                        match row_array[c].as_str().unwrap_or("") {
+                            "WHITE" => white |= bit,
+                            "BLACK" => black |= bit,
+                            "KING"  => {
+                                white |= bit;
+                                king = bit;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-        "WHITEWIN" => get_white_win(),
-
-        "BLACKWIN" => get_black_win(),
-
-        "DRAW" => get_draw(),
-
-        _ => panic!("Unknown turn received from server: {}", turn),
+    let mut state = State {
+        white,
+        black,
+        king,
+        white_to_move,
+        hash: [0; 8],
     };
+
+    // Gestione stati speciali tramite i tuoi metodi
+    match turn_str {
+        "WHITEWIN" | "BLACKWIN" => state.set_win(),
+        "DRAW" => state.set_draw(),
+        _ => state.compute_full_hash(), // Stato normale, ricalcoliamo l'hash
+    }
 
     Ok(state)
 }
@@ -109,6 +141,7 @@ fn write_string(stream: &mut TcpStream, s: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/*
 fn read_string(stream: &mut TcpStream) -> std::io::Result<String> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf)?;
@@ -120,43 +153,4 @@ fn read_string(stream: &mut TcpStream) -> std::io::Result<String> {
 
     Ok(String::from_utf8(buffer).unwrap())
 }
-
-fn parse_json_to_bitboard(input: &str) -> U256 {
-    let v: Value = serde_json::from_str(input).unwrap();
-
-    let board = v["board"].as_array().unwrap();
-    let turn = v["turn"].as_str().unwrap();
-
-    let mut state = U256::zero();
-    let mut k_row = 0usize;
-    let mut k_col = 0usize;
-
-    for row in 0..9 {
-        let row_arr = board[row].as_array().unwrap();
-
-        for col in 0..9 {
-            let cell = row_arr[col].as_str().unwrap();
-            let idx = index(row, col);
-
-            match cell {
-                "WHITE" => state |= U256::one() << idx,
-                "BLACK" => state |= U256::one() << (81 + idx),
-                "KING" => {
-                    state |= U256::one() << idx;
-                    k_row = row;
-                    k_col = col;
-                }
-                _ => {}
-            }
-        }
-    }
-
-    state |= U256::from(k_row as u32) << (2 * 81);
-    state |= U256::from(k_col as u32) << (2 * 81 + 4);
-
-    if turn == "WHITE" {
-        state |= U256::one() << (2 * 81 + 8);
-    }
-
-    state
-}
+*/

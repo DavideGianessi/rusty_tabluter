@@ -6,6 +6,7 @@ use termion::{clear, color, cursor, style};
 
 use crate::board::State;
 use crate::eval::evaluate;
+use crate::search::search;
 use crate::weights::Weights;
 
 const CITADELS: u128 = 264600106062302366670904;
@@ -31,6 +32,7 @@ pub fn interactive() {
     let mut cursor_r: i8 = 4;
     let mut cursor_c: i8 = 4;
     let mut selected_piece: Option<(u8, u8)> = None;
+    let mut search_val: Option<i32> = None;
 
     let stdin = io::stdin();
     let mut stdout = io::stdout().into_raw_mode().unwrap();
@@ -48,7 +50,7 @@ pub fn interactive() {
                 _ => unreachable!(),
             };
             write!(stdout, "\r\n\n   {}\r\n", msg.to_string()).unwrap();
-            write!(stdout, "\r\n   [U] Undo | [Q] Quit\r\n").unwrap();
+            write!(stdout, "\r\n   [U] Undo | [R] Reset | [Q] Quit\r\n").unwrap();
             stdout.flush().unwrap();
         } else {
             let mut all_moves = Vec::new();
@@ -97,9 +99,14 @@ pub fn interactive() {
                 instability
             )
             .unwrap();
+            if let Some(s_val) = search_val {
+                write!(stdout, "Suggestion Score: {}\r\n", s_val).unwrap();
+            } else {
+                write!(stdout, "\r\n").unwrap();
+            }
             write!(
                 stdout,
-                " [WASD/HJKL] Muovi | [SPAZIO] Seleziona | [U] Undo | [Q] Quit\r\n"
+                " [WASD/HJKL] Muovi | [SPAZIO] Seleziona | [G] Search | [U] Undo | [R] Reset | [Q] Quit\r\n"
             )
             .unwrap();
             stdout.flush().unwrap();
@@ -112,13 +119,33 @@ pub fn interactive() {
 
         match key {
             Key::Char('q') => break,
+            Key::Char('r') => {
+                state = State::new();
+                history.clear();
+                history_real.clear();
+                selected_piece = None;
+                cursor_r = 4;
+                cursor_c = 4;
+                search_val = None;
+            }
+            Key::Char('g') => {
+                let result = search(state, &history_real, &weights);
+                if let Some(mv) = result.best_move {
+                    selected_piece = Some((mv.fr, mv.fc));
+                    cursor_r = mv.tr as i8;
+                    cursor_c = mv.tc as i8;
+                    search_val = Some(result.value);
+                }
+            }
             Key::Char('u') => {
                 if let Some(prev) = history.pop() {
                     state = prev;
                     selected_piece = None;
                     history_real.pop();
+                    search_val = None;
                 }
             }
+
             Key::Char('w') | Key::Char('k') => {
                 if cursor_r > 0 {
                     cursor_r -= 1
@@ -155,8 +182,10 @@ pub fn interactive() {
                         state.apply_move(mv, &history_real);
                         history_real.push(the_hash);
                         selected_piece = None;
+                        search_val = None;
                     } else {
                         selected_piece = None;
+                        search_val = None
                     }
                 } else {
                     if (state.white_to_move && state.is_white(r, c))

@@ -62,15 +62,15 @@ pub struct Move {
 impl State {
     pub fn new() -> Self {
         let pos_str = "\
-            OOOBBBOOO\n\
+            OOBOBOBOO\n\
             OOOOBOOOO\n\
-            OOOOWOOOO\n\
             BOOOWOOOB\n\
+            OOOOWOOOO\n\
             BBWWKWWBB\n\
-            BOOOWOOOB\n\
             OOOOWOOOO\n\
+            BOOOWOOOB\n\
             OOOOBOOOO\n\
-            OOOBBBOOO\n\
+            OOBOBOBOO\n\
             turn: W";
         Self::from_position_string(pos_str)
     }
@@ -157,7 +157,6 @@ impl State {
         s
     }
 
-    #[allow(dead_code)]
     pub fn to_position_string(&self) -> String {
         if self.king == 3 {
             if self.hash[0] % 2 == 1 {
