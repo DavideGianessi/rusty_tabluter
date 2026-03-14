@@ -37,7 +37,6 @@ fn send_name(name: &str) -> std::io::Result<()> {
 pub fn get_game_state() -> std::io::Result<State> {
     let mut stream = STREAM.get().unwrap().lock().unwrap();
     
-    // Leggi lunghezza (4 bytes BE) e poi il corpo
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf)?;
     let len = u32::from_be_bytes(len_buf) as usize;
@@ -49,13 +48,11 @@ pub fn get_game_state() -> std::io::Result<State> {
 
     let turn_str = v["turn"].as_str().unwrap_or("");
     
-    // Costruiamo lo State
     let mut white = 0u128;
     let mut black = 0u128;
     let mut king = 0u128;
     let white_to_move = turn_str == "WHITE";
 
-    // Se siamo in un turno normale, popoliamo la board
     if turn_str == "WHITE" || turn_str == "BLACK" {
         if let Some(board_array) = v["board"].as_array() {
             for r in 0..9 {
@@ -140,17 +137,3 @@ fn write_string(stream: &mut TcpStream, s: &str) -> std::io::Result<()> {
     stream.write_all(bytes)?;
     Ok(())
 }
-
-/*
-fn read_string(stream: &mut TcpStream) -> std::io::Result<String> {
-    let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf)?;
-
-    let len = u32::from_be_bytes(len_buf) as usize;
-
-    let mut buffer = vec![0u8; len];
-    stream.read_exact(&mut buffer)?;
-
-    Ok(String::from_utf8(buffer).unwrap())
-}
-*/

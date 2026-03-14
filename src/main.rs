@@ -1,8 +1,4 @@
 use std::env;
-//use std::io::{self,BufRead};
-//use std::str::FromStr;
-
-//use primitive_types::U256;
 
 mod board;
 mod zobrist_keys;
@@ -10,7 +6,7 @@ mod search;
 mod eval;
 mod weights;
 //mod debug;
-//mod stats;
+mod stats;
 mod client;
 mod interactive;
 
@@ -19,6 +15,7 @@ use crate::search::{search};
 use crate::client::{connect,get_game_state,send_move};
 use crate::interactive::interactive;
 use crate::weights::Weights;
+use crate::stats::{reset_stats,print_stats_string};
 
 fn print_help() {
     println!("Usage:");
@@ -38,32 +35,8 @@ fn print_help() {
     println!("      Show this help.");
 }
 
-/*
-fn parse_u256(arg: &str) -> Option<U256> {
-    if let Ok(v) = U256::from_str(arg) {
-        return Some(v);
-    }
-    if let Ok(v) = U256::from_str_radix(arg, 16) {
-        return Some(v);
-    }
-    None
-}
-
-fn read_board() -> U256 {
-    let stdin = io::stdin();
-    let mut lines = Vec::new();
-
-    for line in stdin.lock().lines().take(10) {
-        lines.push(line.unwrap());
-    }
-
-    let board_string = lines.join("\n");
-    parse_position(&board_string)
-}
-*/
 
 fn main() {
-    //interactive();
     let args: Vec<String> = env::args().skip(1).collect();
 
     if args.is_empty(){
@@ -138,6 +111,7 @@ fn main() {
                     continue;
                 }
 
+                reset_stats();
                 let result = search(state, &history, &weights);
 
                 let best_move = result.best_move.unwrap();
@@ -153,6 +127,7 @@ fn main() {
                     "mossa: {} {} -> {} {}\nvalue: {}",
                     start_row, start_col, end_row, end_col,best_value
                 );
+                println!("{}",print_stats_string());
 
                 let res = send_move(start_row as usize, start_col as usize, end_row as usize, end_col as usize);
 

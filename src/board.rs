@@ -1,4 +1,4 @@
-use primitive_types::U256;
+//use primitive_types::U256;
 
 use crate::zobrist_keys::{Z_BLACK, Z_KING, Z_TURN, Z_WHITE};
 
@@ -75,6 +75,7 @@ impl State {
         Self::from_position_string(pos_str)
     }
 
+    /*
     #[allow(dead_code)]
     pub fn from_u256(pos: U256) -> Self {
         let board_mask = (U256::one() << 81) - U256::one();
@@ -98,6 +99,7 @@ impl State {
         s.compute_full_hash();
         s
     }
+    */
 
     pub fn is_black(&self, row: u8, col: u8) -> bool {
         ((self.black >> (row * 9 + col)) & 1) != 0
@@ -109,6 +111,7 @@ impl State {
         ((self.king >> (row * 9 + col)) & 1) != 0
     }
 
+    /*
     #[allow(dead_code)]
     pub fn to_u256(&self) -> U256 {
         let (krow, kcol) = self.king_position();
@@ -118,6 +121,7 @@ impl State {
             | (U256::from(kcol) << (2 * 81 + 4))
             | (U256::from(self.white_to_move as u8) << (2 * 81 + 8))
     }
+    */
 
     pub fn from_position_string(pos: &str) -> Self {
         let mut white = 0u128;
@@ -204,12 +208,14 @@ impl State {
         }
     }
 
+    /*
     pub fn king_position(&self) -> (u8, u8) {
         let index = self.king.trailing_zeros() as u8;
         let row = index / 9;
         let col = index % 9;
         (row, col)
     }
+    */
 
     fn piece_has_moves(&self, r: u8, c: u8) -> bool {
         let idx = (9 * r + c) as i8;

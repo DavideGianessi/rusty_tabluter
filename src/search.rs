@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use crate::board::{Move, State};
 use crate::eval::evaluate;
 use crate::weights::Weights;
-//use crate::stats::{inc_nodes, inc_tt_hits, reset_stats, print_stats};
+use crate::stats::{inc_nodes, inc_tt_hits};
 //use crate::debug::debug_log;
 
 const DEPTH_PENALTY: i32 = 500;
-const MAX_ENERGY: i32 = 2000;
+const MAX_ENERGY: i32 = 4500;
 
 const WIN_SCORE: i32 = 100_000;
 const DRAW_SCORE: i32 = -50_000;
@@ -91,9 +91,11 @@ fn alphabeta(
     weights: &Weights,
     current_eval: i32,
 ) -> (i32, Option<Move>) {
+    inc_nodes(depth);
     let key = state.canonical_hash();
 
     if let Some(v) = tt.get(key, energy) {
+        inc_tt_hits(depth);
         return (v, None);
     }
 
