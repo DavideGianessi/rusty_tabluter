@@ -79,14 +79,16 @@ pub fn get_game_state() -> std::io::Result<State> {
         black,
         king,
         white_to_move,
+        win: false,
+        draw: false,
         hash: [0; 8],
     };
 
-    // Gestione stati speciali tramite i tuoi metodi
     match turn_str {
-        "WHITEWIN" | "BLACKWIN" => state.set_win(),
-        "DRAW" => state.set_draw(),
-        _ => state.compute_full_hash(), // Stato normale, ricalcoliamo l'hash
+        "WHITEWIN"  => {state.win = true; state.white_to_move = false},
+        "BLACKWIN" => {state.win = true; state.white_to_move = true},
+        "DRAW" => state.draw = true,
+        _ => state.compute_full_hash(),
     }
 
     Ok(state)

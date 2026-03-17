@@ -40,15 +40,17 @@ pub fn interactive() {
 
     loop {
         write!(stdout, "{}{}", clear::All, cursor::Goto(1, 1)).unwrap();
-        let h = state.hash();
-        if h < 4 {
-            let msg = match h {
-                0 => "VITTORIA BIANCO",
-                1 => "VITTORIA NERO",
-                2 => "PATTA",
-                3 => "PATTA",
-                _ => unreachable!(),
-            };
+        if state.win || state.draw {
+            let mut msg = "";
+            if state.win && !state.white_to_move {
+                msg = "VITTORIA BIANCO";
+            }
+            if state.win && state.white_to_move {
+                msg = "VITTORIA NERO";
+            }
+            if state.draw {
+                msg = "PATTA";
+            }
             write!(stdout, "\r\n\n   {}\r\n", msg.to_string()).unwrap();
             write!(stdout, "\r\n   [U] Undo | [R] Reset | [Q] Quit\r\n").unwrap();
             stdout.flush().unwrap();

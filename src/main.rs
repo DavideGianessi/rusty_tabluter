@@ -23,11 +23,6 @@ fn print_help() {
     println!("  bot --interactive");
     println!("      Start interactive debugging mode.");
 
-    println!("  bot -s [U256]");
-    println!("      Run a single search with debug output.");
-    println!("      If U256 is provided, it is used as the state.");
-    println!("      Otherwise a board is read from stdin using parse_position().");
-
     println!("  bot <white|black> <time_limit> <server_ip>");
     println!("      Connect to server and play normally.");
 
@@ -93,15 +88,15 @@ fn main() {
                 let state: State = get_game_state().unwrap();
                 println!("state received:\n{}", state.to_position_string());
 
-                if state.hash() == 0 {
+                if state.win && !state.white_to_move{
                     println!("WHITE WIN");
                     return;
                 }
-                if state.hash() == 1 {
+                if state.win && state.white_to_move{
                     println!("BLACK WIN");
                     return;
                 }
-                if state.hash() == 2 || state.hash() == 3 {
+                if state.draw {
                     println!("DRAW");
                     return;
                 }

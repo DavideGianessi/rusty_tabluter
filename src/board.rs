@@ -1,5 +1,3 @@
-//use primitive_types::U256;
-
 use crate::zobrist_keys::{Z_BLACK, Z_KING, Z_TURN, Z_WHITE};
 
 const THRONE: u128 = 1 << 9 * 4 + 4;
@@ -46,6 +44,9 @@ pub struct State {
 
     pub white_to_move: bool,
 
+    pub win: bool,
+    pub draw: bool,
+
     pub hash: [u64; 8],
 }
 
@@ -75,32 +76,6 @@ impl State {
         Self::from_position_string(pos_str)
     }
 
-    /*
-    #[allow(dead_code)]
-    pub fn from_u256(pos: U256) -> Self {
-        let board_mask = (U256::one() << 81) - U256::one();
-
-        let white = (pos & board_mask).low_u128();
-        let black = ((pos >> 81) & board_mask).low_u128();
-
-        let krow = ((pos >> 162) & U256::from(0xF)).low_u128() as u8;
-        let kcol = ((pos >> 166) & U256::from(0xF)).low_u128() as u8;
-        let king = 1u128 << (9 * krow + kcol);
-
-        let white_to_move = (pos >> 170).low_u128() & 1 != 0;
-
-        let mut s = State {
-            white,
-            black,
-            king,
-            white_to_move,
-            hash: [0; 8],
-        };
-        s.compute_full_hash();
-        s
-    }
-    */
-
     pub fn is_black(&self, row: u8, col: u8) -> bool {
         ((self.black >> (row * 9 + col)) & 1) != 0
     }
@@ -110,18 +85,6 @@ impl State {
     pub fn is_king(&self, row: u8, col: u8) -> bool {
         ((self.king >> (row * 9 + col)) & 1) != 0
     }
-
-    /*
-    #[allow(dead_code)]
-    pub fn to_u256(&self) -> U256 {
-        let (krow, kcol) = self.king_position();
-        U256::from(self.white)
-            | (U256::from(self.black) << 81)
-            | (U256::from(krow) << (2 * 81))
-            | (U256::from(kcol) << (2 * 81 + 4))
-            | (U256::from(self.white_to_move as u8) << (2 * 81 + 8))
-    }
-    */
 
     pub fn from_position_string(pos: &str) -> Self {
         let mut white = 0u128;
@@ -155,6 +118,8 @@ impl State {
             black,
             king,
             white_to_move,
+            win: false,
+            draw: false,
             hash: [0; 8],
         };
         s.compute_full_hash();
@@ -162,14 +127,15 @@ impl State {
     }
 
     pub fn to_position_string(&self) -> String {
-        if self.king == 3 {
-            if self.hash[0] % 2 == 1 {
+        if self.win {
+            if self.white_to_move {
+                return "BLACK HAS WON THE GAME".to_string();
+            } else {
                 return "WHITE HAS WON THE GAME".to_string();
             }
-            if self.hash[0] >= 2 {
-                return "IT'S A DRAW".to_string();
-            }
-            return "BLACK HAS WON THE GAME".to_string();
+        }
+        if self.draw {
+            return "IT'S A DRAW".to_string();
         }
 
         let mut output = String::new();
@@ -195,27 +161,6 @@ impl State {
         });
         output
     }
-
-    pub fn set_win(&mut self) {
-        for i in 0..8 {
-            self.hash[i] = 0 + self.white_to_move as u64;
-        }
-    }
-
-    pub fn set_draw(&mut self) {
-        for i in 0..8 {
-            self.hash[i] = 2 + self.white_to_move as u64;
-        }
-    }
-
-    /*
-    pub fn king_position(&self) -> (u8, u8) {
-        let index = self.king.trailing_zeros() as u8;
-        let row = index / 9;
-        let col = index % 9;
-        (row, col)
-    }
-    */
 
     fn piece_has_moves(&self, r: u8, c: u8) -> bool {
         let idx = (9 * r + c) as i8;
@@ -375,6 +320,7 @@ impl State {
             let mut h = self.hash[i];
             if is_king {
                 h ^= Z_KING[i][fr_idx] ^ Z_KING[i][tr_idx];
+                h ^= Z_WHITE[i][fr_idx] ^ Z_WHITE[i][tr_idx];
             } else if is_white {
                 h ^= Z_WHITE[i][fr_idx] ^ Z_WHITE[i][tr_idx];
             } else {
@@ -388,9 +334,49 @@ impl State {
 
                 if (self.king & cap_bit) != 0 {
                     h ^= Z_KING[i][cap_idx];
+                    h ^= Z_WHITE[i][cap_idx];
                 } else if (self.white & cap_bit) != 0 {
                     h ^= Z_WHITE[i][cap_idx];
                 } else if (self.black & cap_bit) != 0 {
+                    h ^= Z_BLACK[i][cap_idx];
+                }
+
+                caps &= caps - 1;
+            }
+            h ^= Z_TURN;
+            self.hash[i] = h;
+        }
+    }
+
+    pub fn reverse_update_hash(&mut self, mv: &Move) {
+        let fr_idx = (mv.fr * 9 + mv.fc) as usize;
+        let tr_idx = (mv.tr * 9 + mv.tc) as usize;
+
+        let is_king = (self.king & (1u128 << tr_idx)) != 0;
+        let is_white = (self.white & (1u128 << tr_idx)) != 0;
+
+        for i in 0..8 {
+            let mut h = self.hash[i];
+            if is_king {
+                h ^= Z_KING[i][fr_idx] ^ Z_KING[i][tr_idx];
+                h ^= Z_WHITE[i][fr_idx] ^ Z_WHITE[i][tr_idx];
+            } else if is_white {
+                h ^= Z_WHITE[i][fr_idx] ^ Z_WHITE[i][tr_idx];
+            } else {
+                h ^= Z_BLACK[i][fr_idx] ^ Z_BLACK[i][tr_idx];
+            }
+
+            let mut caps = mv.captured;
+            while caps != 0 {
+                let cap_idx = caps.trailing_zeros() as usize;
+                let cap_bit = 1u128 << cap_idx;
+
+                if (self.king & cap_bit) != 0 {
+                    h ^= Z_KING[i][cap_idx];
+                    h ^= Z_WHITE[i][cap_idx];
+                } else if (bit_to_mask(self.white_to_move) & cap_bit) != 0 {
+                    h ^= Z_WHITE[i][cap_idx];
+                } else if (bit_to_mask(!self.white_to_move) & cap_bit) != 0 {
                     h ^= Z_BLACK[i][cap_idx];
                 }
 
@@ -426,14 +412,38 @@ impl State {
 
         self.white &= !mv.captured;
         self.black &= !mv.captured;
-        self.king &= !mv.captured;
 
         self.white_to_move = !self.white_to_move;
 
-        if self.king & ALIVE_KING_ZONE == 0 || !self.has_moves() {
-            self.set_win();
+        if self.king & self.white & ALIVE_KING_ZONE == 0 || !self.has_moves() {
+            self.win = true;
         } else if history.contains(&self.hash[0]) {
-            self.set_draw();
+            self.draw = true;
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn unmake_move(&mut self, mv: &Move) {
+        self.reverse_update_hash(mv);
+
+        let fr_idx: i8 = (mv.fr * 9 + mv.fc) as i8;
+        let to_idx: i8 = (mv.tr * 9 + mv.tc) as i8;
+        let white_pawn = extract_bit(self.white, to_idx) as u128;
+        self.white |= white_pawn << to_idx;
+        self.white &= !(1 << fr_idx);
+        let black_pawn = extract_bit(self.black, to_idx) as u128;
+        self.black |= black_pawn << to_idx;
+        self.black &= !(1 << fr_idx);
+        let king_pawn = extract_bit(self.king, to_idx) as u128;
+        self.king |= king_pawn << to_idx;
+        self.king &= !(1 << fr_idx);
+
+        self.white |= bit_to_mask(self.white_to_move) & mv.captured;
+        self.black |= bit_to_mask(!self.white_to_move) & mv.captured;
+
+        self.white_to_move = !self.white_to_move;
+
+        self.win = false;
+        self.draw = false;
     }
 }

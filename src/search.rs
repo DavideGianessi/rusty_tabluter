@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use crate::board::{Move, State};
 use crate::eval::evaluate;
-use crate::weights::Weights;
 use crate::stats::{inc_nodes, inc_tt_hits};
+use crate::weights::Weights;
 //use crate::debug::debug_log;
 
 const DEPTH_PENALTY: i32 = 500;
@@ -14,6 +12,9 @@ const DRAW_SCORE: i32 = -50_000;
 const ALPHA_START: i32 = -200_000;
 const BETA_START: i32 = 200_000;
 
+const TT_SIZE: usize = 1<<20;
+const TT_MASK: u64 = (1<<20)-1;
+
 pub struct SearchResult {
     pub value: i32,
     pub best_move: Option<Move>,
@@ -21,30 +22,47 @@ pub struct SearchResult {
 
 #[derive(Clone, Copy)]
 pub struct TTEntry {
+    pub hash: u64,
     pub value: i32,
     pub energy: i32,
 }
 
+impl TTEntry {
+    pub fn new() -> Self {
+        Self {
+            hash:0,
+            value:-1,
+            energy:-1,
+        }
+    }
+}
+
 pub struct TranspositionTable {
-    pub table: HashMap<u64, TTEntry>,
+    pub table: Box<[TTEntry]>,
 }
 
 impl TranspositionTable {
     pub fn new() -> Self {
-        Self {
-            table: HashMap::with_capacity(10_000_000),
-        }
+        let table = vec![TTEntry::new(); TT_SIZE].into_boxed_slice();
+        Self { table }
     }
 
     pub fn insert(&mut self, key: u64, value: i32, energy: i32) {
-        self.table.insert(key, TTEntry { value, energy });
+        let index = (key & TT_MASK) as usize;
+        let entry = &mut self.table[index];
+        if entry.energy < energy {
+            *entry = TTEntry {
+                hash:key,
+                value:value,
+                energy:energy,
+            };
+        }
     }
 
     pub fn get(&self, key: u64, energy: i32) -> Option<i32> {
-        if let Some(entry) = self.table.get(&key) {
-            if entry.energy >= energy {
-                return Some(entry.value);
-            }
+        let entry = &self.table[(key & TT_MASK) as usize];
+        if entry.hash == key && entry.energy>= energy {
+            return Some(entry.value);
         }
         None
     }
@@ -52,15 +70,6 @@ impl TranspositionTable {
 
 pub fn search(root: State, history: &Vec<u64>, weights: &Weights) -> SearchResult {
     let mut tt = TranspositionTable::new();
-    tt.insert(0, -WIN_SCORE, 1_000_000_000);
-    tt.insert(1, -WIN_SCORE, 1_000_000_000);
-    if root.white_to_move {
-        tt.insert(2, -DRAW_SCORE, 1_000_000_000);
-        tt.insert(3, DRAW_SCORE, 1_000_000_000);
-    } else {
-        tt.insert(2, DRAW_SCORE, 1_000_000_000);
-        tt.insert(3, -DRAW_SCORE, 1_000_000_000);
-    }
 
     let mut local_history = history.clone();
     let (my_eval, _my_instability) = evaluate(&root, &weights);
@@ -75,6 +84,7 @@ pub fn search(root: State, history: &Vec<u64>, weights: &Weights) -> SearchResul
         &mut tt,
         weights,
         -my_eval,
+        root.white_to_move,
     );
 
     SearchResult { value, best_move }
@@ -90,8 +100,21 @@ fn alphabeta(
     tt: &mut TranspositionTable,
     weights: &Weights,
     current_eval: i32,
+    is_white_searcher: bool,
 ) -> (i32, Option<Move>) {
     inc_nodes(depth);
+
+    if state.win || state.draw {
+        if state.win {
+            return (-WIN_SCORE, None);
+        }
+        if state.white_to_move == is_white_searcher {
+            return (DRAW_SCORE, None);
+        } else {
+            return (-DRAW_SCORE, None);
+        }
+    }
+
     let key = state.canonical_hash();
 
     if let Some(v) = tt.get(key, energy) {
@@ -124,7 +147,7 @@ fn alphabeta(
             let child_energy =
                 energy - DEPTH_PENALTY + child_instab + capture_bonus + (eval_diff / 10);
 
-            let is_tt_hit = tt.table.contains_key(&child_key);
+            let is_tt_hit = tt.get(child_key,child_energy).is_none();
 
             (
                 mv,
@@ -155,6 +178,7 @@ fn alphabeta(
             tt,
             weights,
             -child_eval,
+            is_white_searcher,
         );
 
         value = -value;
