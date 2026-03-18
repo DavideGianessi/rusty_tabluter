@@ -6,8 +6,6 @@ mod zobrist_keys;
 mod search;
 mod eval;
 mod weights;
-//mod debug;
-//mod stats;
 mod client;
 mod interactive;
 
@@ -16,9 +14,6 @@ use crate::search::{search};
 use crate::client::{connect,get_game_state,send_move};
 use crate::interactive::interactive;
 use crate::weights::Weights;
-//use crate::stats::{reset_stats,print_stats_string};
-
-//const MAX_DEPTH: i32 = 6;
 
 fn print_help() {
     println!("Usage:");

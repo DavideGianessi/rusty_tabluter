@@ -26,7 +26,7 @@ pub struct LevelStats {
     pub nodes_visited: u64,
     pub tt_hits: u64,
     pub beta_cutoffs: u64,
-    pub pruned_branches: u64,
+    pub satisfaction_cutoffs: u64,
     pub tt_collisions: u64,
 }
 
@@ -111,6 +111,8 @@ pub fn search(
 
     let start_time = Instant::now();
 
+    let mut prev_score: Option<i32> = None;
+
     for current_max_depth in 3..=20 {
         if should_abort() { break; }
 
@@ -130,21 +132,23 @@ pub fn search(
             weights,
             state.white_to_move,
             &mut stats,
+            prev_score,
         );
 
         if let Some((value, mv)) = result {
             last_valid_result = SearchResult { value, best_move: mv, stats };
+            prev_score = Some(value);
             
             if debug {
                 println!("--- Depth {} Completed in {:?} ---", current_max_depth, start_time.elapsed());
-                println!("{:<5} | {:<10} | {:<8} | {:<8} | {:<12} | {:<10}", "Lvl", "Nodes", "TT Hits", "Cutoffs", "Pruned", "Collis.");
+                println!("{:<5} | {:<10} | {:<8} | {:<8} | {:<12} | {:<10}", "Lvl", "Nodes", "TT Hits", "Beta Cutoffs", "Satisfaction Cutoffs", "Collis.");
                 println!("{}", "-".repeat(70));
                 
                 for (lvl, s) in last_valid_result.stats.iter().enumerate() {
-                    if s.nodes_visited == 0 && s.pruned_branches == 0 { continue; }
+                    if s.nodes_visited == 0 { continue; }
                     println!(
                         "{:<5} | {:<10} | {:<8} | {:<8} | {:<12} | {:<10}",
-                        lvl, s.nodes_visited, s.tt_hits, s.beta_cutoffs, s.pruned_branches, s.tt_collisions
+                        lvl, s.nodes_visited, s.tt_hits, s.beta_cutoffs, s.satisfaction_cutoffs, s.tt_collisions
                     );
                 }
                 println!("Score: {} | Move: {:?}\n", value, mv);
@@ -170,6 +174,7 @@ fn alphabeta(
     weights: &Weights,
     is_white_searcher: bool,
     stats: &mut [LevelStats],
+    last_value: Option<i32>,
 ) -> Option<(i32, Option<Move>)> {
     
     if (depth == 0 || stats[depth].nodes_visited % 65536 == 0) && should_abort() {
@@ -239,6 +244,7 @@ fn alphabeta(
             weights,
             is_white_searcher,
             stats,
+            last_value.map(|v| -v),
         )?;
 
         val = -val;
@@ -251,13 +257,23 @@ fn alphabeta(
         alpha = alpha.max(val);
         
         if alpha >= beta {
-            stats[depth].beta_cutoffs += 1;
             let remaining = (num_moves - (i + 1)) as u64;
             if depth + 1 < stats.len() {
-                stats[depth + 1].pruned_branches += remaining;
+                stats[depth + 1].beta_cutoffs += remaining;
             }
             break;
         }
+
+        if let Some(lv) = last_value {
+            let remaining = (num_moves - (i + 1)) as u64;
+            if val >= lv + weights.satisfaction_threshold {
+                if depth + 1 < stats.len() {
+                    stats[depth + 1].satisfaction_cutoffs += remaining;
+                }
+                break;
+            }
+        }
+
     }
 
     history.pop();

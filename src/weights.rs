@@ -19,6 +19,7 @@ pub struct Weights {
     pub solid_control: Param,
     pub black_in: Param,
     pub white_out: Param,
+    pub satisfaction_threshold: i32,
 }
 
 impl Weights {
@@ -64,6 +65,7 @@ impl Weights {
                 eval: -70,
                 instab: 50,
             },
+            satisfaction_threshold: 500,
         }
     }
 }
