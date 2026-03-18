@@ -87,19 +87,18 @@ pub fn interactive() {
                 capture_mask,
             );
 
-            let (val, instability) = evaluate(&state, &weights);
+            let val = evaluate(&state, &weights);
 
             write!(
                 stdout,
-                "\r\n Turno: {} | Hash: {} | Eval: {} | Instability: {}\r\n",
+                "\r\n Turno: {} | Hash: {} | Eval: {}\r\n",
                 if state.white_to_move {
                     "BIANCO"
                 } else {
                     "NERO"
                 },
                 state.hash(),
-                val,
-                instability
+                val
             )
             .unwrap();
             if let Some(s_val) = search_val {

@@ -141,7 +141,7 @@ pub fn search(
             
             if debug {
                 println!("--- Depth {} Completed in {:?} ---", current_max_depth, start_time.elapsed());
-                println!("{:<5} | {:<10} | {:<8} | {:<8} | {:<12} | {:<10}", "Lvl", "Nodes", "TT Hits", "Beta Cutoffs", "Satisfaction Cutoffs", "Collis.");
+                println!("{:<5} | {:<10} | {:<8} | {:<8} | {:<12} | {:<10}", "Lvl", "Nodes", "TT Hits", "Beta", "Satisfaction", "Collis.");
                 println!("{}", "-".repeat(70));
                 
                 for (lvl, s) in last_valid_result.stats.iter().enumerate() {
@@ -198,8 +198,8 @@ fn alphabeta(
     }
 
     if depth >= max_depth {
-        let (eval, _) = evaluate(&state, weights);
-        return Some((eval, None));
+        let val = evaluate(&state,&weights);
+        return Some((val, None));
     }
 
     let mut moves = Vec::with_capacity(128);
@@ -283,3 +283,4 @@ fn alphabeta(
 
     Some((final_score, best_move))
 }
+

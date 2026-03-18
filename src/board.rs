@@ -242,6 +242,39 @@ impl State {
         }
         false
     }
+    pub fn white_mobility(&self) -> i32 {
+        let mut count = 0;
+        let mut pieces = self.white;
+
+        let base_occupied = self.white | self.black | THRONE | HALF_CITADELS_1 | HALF_CITADELS_2;
+        while pieces != 0 {
+            let idx = pieces.trailing_zeros() as u8;
+            pieces &= !(1u128 << idx);
+            let r = idx / 9;
+            let c = idx % 9;
+            for tr in (0..r).rev() {
+                if (base_occupied & (1u128 << (tr * 9 + c))) != 0 { break; }
+                count += 1;
+                if count >= 20 { return 20; }
+            }
+            for tr in (r + 1)..9 {
+                if (base_occupied & (1u128 << (tr * 9 + c))) != 0 { break; }
+                count += 1;
+                if count >= 20 { return 20; }
+            }
+            for tc in (0..c).rev() {
+                if (base_occupied & (1u128 << (r * 9 + tc))) != 0 { break; }
+                count += 1;
+                if count >= 20 { return 20; }
+            }
+            for tc in (c + 1)..9 {
+                if (base_occupied & (1u128 << (r * 9 + tc))) != 0 { break; }
+                count += 1;
+                if count >= 20 { return 20; }
+            }
+        }
+        count
+    }
 
     fn compute_captures(&self, tr: u8, tc: u8) -> u128 {
         let tr = tr as i8;

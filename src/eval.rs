@@ -54,7 +54,7 @@ const SOLID_CONTROL: [u128; 4] = [
     1731634056723955712,
 ];
 
-pub fn evaluate(state: &State, w: &Weights) -> (i32, i32) {
+pub fn evaluate(state: &State, w: &Weights) -> i32 {
 
     let white_count = state.white.count_ones() as i32;
     let black_count = state.black.count_ones() as i32;
@@ -97,29 +97,22 @@ pub fn evaluate(state: &State, w: &Weights) -> (i32, i32) {
     let black_in = (state.black & INTERNAL).count_ones() as i32;
     let white_out = (state.white & EXTERNAL).count_ones() as i32;
 
-    let mut score = white_count * w.white_piece.eval
-        + black_count * w.black_piece.eval
-        + ready * w.ready.eval
-        + balance * w.balance.eval
-        + first_line * w.first_line.eval
-        + second_line * w.second_line.eval
-        + third_line * w.third_line.eval
-        + solid_control * w.solid_control.eval
-        + black_in * w.black_in.eval
-        + white_out * w.white_out.eval;
-    let instab = white_count * w.white_piece.instab
-        + black_count * w.black_piece.instab
-        + ready * w.ready.instab
-        + balance * w.balance.instab
-        + first_line * w.first_line.instab
-        + second_line * w.second_line.instab
-        + third_line * w.third_line.instab
-        + solid_control * w.solid_control.instab
-        + black_in * w.black_in.instab
-        + white_out * w.white_out.instab;
+    let white_moves = state.white_mobility();
+
+    let mut score = white_count * w.white_piece
+        + black_count * w.black_piece
+        + ready * w.ready
+        + balance * w.balance
+        + first_line * w.first_line
+        + second_line * w.second_line
+        + third_line * w.third_line
+        + solid_control * w.solid_control
+        + black_in * w.black_in
+        + white_out * w.white_out
+        + white_moves * w.white_moves;
 
     let turnflip = (state.white_to_move as i32 * -2) + 1;
     score *= turnflip;
 
-    (score, instab)
+    score
 }
