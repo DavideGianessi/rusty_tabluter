@@ -1,40 +1,46 @@
 use crate::board::{Move, State};
 use crate::eval::evaluate;
-use crate::stats::{inc_nodes, inc_tt_hits};
 use crate::weights::Weights;
-//use crate::debug::debug_log;
-
-const DEPTH_PENALTY: i32 = 500;
-const MAX_ENERGY: i32 = 4500;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
 
 const WIN_SCORE: i32 = 100_000;
 const DRAW_SCORE: i32 = -50_000;
 const ALPHA_START: i32 = -200_000;
 const BETA_START: i32 = 200_000;
 
-const TT_SIZE: usize = 1<<20;
-const TT_MASK: u64 = (1<<20)-1;
+const TT_BITS: usize = 24; 
+const TT_SIZE: usize = 1 << TT_BITS; 
+const TT_MASK: u64 = (TT_SIZE as u64) - 1;
+
+pub static ABORT_SEARCH: AtomicBool = AtomicBool::new(false);
+
+#[inline(always)]
+pub fn should_abort() -> bool {
+    ABORT_SEARCH.load(Ordering::Relaxed)
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct LevelStats {
+    pub nodes_visited: u64,
+    pub tt_hits: u64,
+    pub beta_cutoffs: u64,
+    pub pruned_branches: u64,
+    pub tt_collisions: u64,
+}
 
 pub struct SearchResult {
     pub value: i32,
     pub best_move: Option<Move>,
+    pub stats: Vec<LevelStats>,
 }
 
 #[derive(Clone, Copy)]
 pub struct TTEntry {
     pub hash: u64,
     pub value: i32,
-    pub energy: i32,
-}
-
-impl TTEntry {
-    pub fn new() -> Self {
-        Self {
-            hash:0,
-            value:-1,
-            energy:-1,
-        }
-    }
+    pub depth_from_root: u32,
 }
 
 pub struct TranspositionTable {
@@ -43,160 +49,221 @@ pub struct TranspositionTable {
 
 impl TranspositionTable {
     pub fn new() -> Self {
-        let table = vec![TTEntry::new(); TT_SIZE].into_boxed_slice();
+        let table = vec![TTEntry { hash: 0, value: 0, depth_from_root: 999 }; TT_SIZE].into_boxed_slice();
         Self { table }
     }
 
-    pub fn insert(&mut self, key: u64, value: i32, energy: i32) {
-        let index = (key & TT_MASK) as usize;
-        let entry = &mut self.table[index];
-        if entry.energy < energy {
-            *entry = TTEntry {
-                hash:key,
-                value:value,
-                energy:energy,
-            };
+    pub fn clear(&mut self) {
+        for entry in self.table.iter_mut() {
+            entry.hash = 0;
+            entry.depth_from_root = 999;
         }
     }
 
-    pub fn get(&self, key: u64, energy: i32) -> Option<i32> {
-        let entry = &self.table[(key & TT_MASK) as usize];
-        if entry.hash == key && entry.energy>= energy {
-            return Some(entry.value);
+    #[inline(always)]
+    pub fn insert(&mut self, key: u64, value: i32, depth: u32, stats: &mut [LevelStats]) {
+        let index = (key & TT_MASK) as usize;
+        let entry = &mut self.table[index];
+        
+        if entry.hash == 0 || depth < entry.depth_from_root {
+            *entry = TTEntry {
+                hash: key,
+                value,
+                depth_from_root: depth,
+            };
+        } else if entry.hash != key {
+            stats[depth as usize].tt_collisions += 1;
         }
-        None
+    }
+
+    #[inline(always)]
+    pub fn get(&self, key: u64) -> Option<(i32, u32)> {
+        let entry = &self.table[(key & TT_MASK) as usize];
+        if entry.hash == key {
+            Some((entry.value, entry.depth_from_root))
+        } else {
+            None
+        }
     }
 }
 
-pub fn search(root: State, history: &Vec<u64>, weights: &Weights) -> SearchResult {
-    let mut tt = TranspositionTable::new();
+pub fn search(
+    state: &State,
+    history: &Vec<u64>,
+    weights: &Weights,
+    time_limit: Duration,
+    debug: bool,
+) -> SearchResult {
+    let mut tt_prev = TranspositionTable::new();
+    let mut tt_curr = TranspositionTable::new();
+    let mut last_valid_result = SearchResult {
+        value: 0,
+        best_move: None,
+        stats: vec![LevelStats::default(); 21],
+    };
 
-    let mut local_history = history.clone();
-    let (my_eval, _my_instability) = evaluate(&root, &weights);
+    ABORT_SEARCH.store(false, Ordering::Relaxed);
+    let timeout = time_limit.saturating_sub(Duration::from_millis(500));
+    thread::spawn(move || {
+        thread::sleep(timeout);
+        ABORT_SEARCH.store(true, Ordering::Relaxed);
+    });
 
-    let (value, best_move) = alphabeta(
-        root,
-        0,
-        MAX_ENERGY,
-        ALPHA_START,
-        BETA_START,
-        &mut local_history,
-        &mut tt,
-        weights,
-        -my_eval,
-        root.white_to_move,
-    );
+    let start_time = Instant::now();
 
-    SearchResult { value, best_move }
+    for current_max_depth in 3..=20 {
+        if should_abort() { break; }
+
+        tt_curr.clear();
+        let mut stats = vec![LevelStats::default(); current_max_depth + 1];
+        let mut local_history = history.clone();
+
+        let result = alphabeta(
+            *state,
+            0,
+            current_max_depth,
+            ALPHA_START,
+            BETA_START,
+            &mut local_history,
+            &mut tt_curr,
+            &tt_prev,
+            weights,
+            state.white_to_move,
+            &mut stats,
+        );
+
+        if let Some((value, mv)) = result {
+            last_valid_result = SearchResult { value, best_move: mv, stats };
+            
+            if debug {
+                println!("--- Depth {} Completed in {:?} ---", current_max_depth, start_time.elapsed());
+                println!("{:<5} | {:<10} | {:<8} | {:<8} | {:<12} | {:<10}", "Lvl", "Nodes", "TT Hits", "Cutoffs", "Pruned", "Collis.");
+                println!("{}", "-".repeat(70));
+                
+                for (lvl, s) in last_valid_result.stats.iter().enumerate() {
+                    if s.nodes_visited == 0 && s.pruned_branches == 0 { continue; }
+                    println!(
+                        "{:<5} | {:<10} | {:<8} | {:<8} | {:<12} | {:<10}",
+                        lvl, s.nodes_visited, s.tt_hits, s.beta_cutoffs, s.pruned_branches, s.tt_collisions
+                    );
+                }
+                println!("Score: {} | Move: {:?}\n", value, mv);
+            }
+
+            std::mem::swap(&mut tt_prev, &mut tt_curr);
+            if value.abs() >= WIN_SCORE - 100 { break; }
+        } else { break; }
+    }
+
+    last_valid_result
 }
 
 fn alphabeta(
     state: State,
     depth: usize,
-    energy: i32,
+    max_depth: usize,
     mut alpha: i32,
     beta: i32,
     history: &mut Vec<u64>,
-    tt: &mut TranspositionTable,
+    tt_curr: &mut TranspositionTable,
+    tt_prev: &TranspositionTable,
     weights: &Weights,
-    current_eval: i32,
     is_white_searcher: bool,
-) -> (i32, Option<Move>) {
-    inc_nodes(depth);
+    stats: &mut [LevelStats],
+) -> Option<(i32, Option<Move>)> {
+    
+    if (depth == 0 || stats[depth].nodes_visited % 65536 == 0) && should_abort() {
+        return None;
+    }
+    stats[depth].nodes_visited += 1;
 
     if state.win || state.draw {
-        if state.win {
-            return (-WIN_SCORE, None);
-        }
-        if state.white_to_move == is_white_searcher {
-            return (DRAW_SCORE, None);
-        } else {
-            return (-DRAW_SCORE, None);
+        if state.win { return Some((-WIN_SCORE, None)); }
+        let score = if state.white_to_move == is_white_searcher { DRAW_SCORE } else { -DRAW_SCORE };
+        return Some((score, None));
+    }
+
+    let key = state.hash();
+
+    if let Some((v, d_entry)) = tt_curr.get(key) {
+        if d_entry as usize <= depth {
+            stats[depth].tt_hits += 1;
+            return Some((v, None));
         }
     }
 
-    let key = state.canonical_hash();
-
-    if let Some(v) = tt.get(key, energy) {
-        inc_tt_hits(depth);
-        return (v, None);
-    }
-
-    if energy <= 0 {
-        return (current_eval, None);
+    if depth >= max_depth {
+        let (eval, _) = evaluate(&state, weights);
+        return Some((eval, None));
     }
 
     let mut moves = Vec::with_capacity(128);
     state.generate_moves(&mut moves);
-
-    let mut scored_moves: Vec<(Move, State, u64, i32, i32, bool)> = moves
-        .into_iter()
-        .map(|mv| {
-            let mut child_state = state;
-            child_state.apply_move(&mv, &history);
-            let child_key = child_state.canonical_hash();
-
-            let capture_bonus = if mv.captured != 0 { 150 } else { 0 };
-
-            let (child_eval, child_instab) = evaluate(&child_state, weights);
-
-            let child_eval = -child_eval;
-
-            let eval_diff = child_eval - current_eval;
-
-            let child_energy =
-                energy - DEPTH_PENALTY + child_instab + capture_bonus + (eval_diff / 10);
-
-            let is_tt_hit = tt.get(child_key,child_energy).is_none();
-
-            (
-                mv,
-                child_state,
-                child_key,
-                child_eval,
-                child_energy,
-                is_tt_hit,
-            )
-        })
-        .collect();
-
-    scored_moves.sort_by(|a, b| b.5.cmp(&a.5).then_with(|| b.3.cmp(&a.3)));
+    
+    if depth < max_depth.saturating_sub(2) {
+        moves.sort_by_cached_key(|mv| {
+            let mut child = state;
+            child.apply_move(mv, history);
+            let child_hash = child.hash();
+            if let Some((v, d_entry)) = tt_curr.get(child_hash) {
+                if d_entry as usize <= depth + 1 {
+                    return 0 - (v / 10); 
+                }
+            }
+            if let Some((v, _)) = tt_prev.get(child_hash) {
+                return 100_000 - (v / 10);
+            }
+            200_000
+        });
+    }
 
     let mut best_value = ALPHA_START - 1;
     let mut best_move = None;
+    let num_moves = moves.len();
 
-    history.push(state.hash());
+    history.push(key);
 
-    for (mv, child_state, _child_key, child_eval, child_energy, _is_hit) in scored_moves {
-        let (mut value, _) = alphabeta(
-            child_state,
+    for (i, mv) in moves.into_iter().enumerate() {
+        let mut child = state;
+        child.apply_move(&mv, history);
+
+        let (mut val, _) = alphabeta(
+            child,
             depth + 1,
-            child_energy,
+            max_depth,
             -beta,
             -alpha,
             history,
-            tt,
+            tt_curr,
+            tt_prev,
             weights,
-            -child_eval,
             is_white_searcher,
-        );
+            stats,
+        )?;
 
-        value = -value;
+        val = -val;
 
-        if value > best_value {
-            best_value = value;
+        if val > best_value {
+            best_value = val;
             best_move = Some(mv);
         }
 
-        alpha = alpha.max(value);
+        alpha = alpha.max(val);
+        
         if alpha >= beta {
+            stats[depth].beta_cutoffs += 1;
+            let remaining = (num_moves - (i + 1)) as u64;
+            if depth + 1 < stats.len() {
+                stats[depth + 1].pruned_branches += remaining;
+            }
             break;
         }
     }
 
     history.pop();
 
-    tt.insert(key, best_value, energy);
+    let final_score = best_value - best_value.signum();
+    tt_curr.insert(key, final_score, depth as u32, stats);
 
-    (best_value - best_value.signum(), best_move)
+    Some((final_score, best_move))
 }

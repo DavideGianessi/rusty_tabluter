@@ -47,10 +47,10 @@ pub struct State {
     pub win: bool,
     pub draw: bool,
 
-    pub hash: [u64; 8],
+    pub hash: u64,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Move {
     pub fr: u8,
     pub fc: u8,
@@ -120,7 +120,7 @@ impl State {
             white_to_move,
             win: false,
             draw: false,
-            hash: [0; 8],
+            hash: 0,
         };
         s.compute_full_hash();
         s
@@ -280,33 +280,31 @@ impl State {
     }
 
     pub fn compute_full_hash(&mut self) {
-        for i in 0..8 {
-            let mut h = 0u64;
-            if self.white_to_move {
-                h ^= Z_TURN;
-            }
-
-            let mut w = self.white;
-            while w != 0 {
-                let idx = w.trailing_zeros() as usize;
-                h ^= Z_WHITE[i][idx];
-                w &= w - 1;
-            }
-            let mut b = self.black;
-            while b != 0 {
-                let idx = b.trailing_zeros() as usize;
-                h ^= Z_BLACK[i][idx];
-                b &= b - 1;
-            }
-            let mut k = self.king;
-            while k != 0 {
-                let idx = k.trailing_zeros() as usize;
-                h ^= Z_KING[i][idx];
-                k &= k - 1;
-            }
-
-            self.hash[i] = h;
+        let mut h = 0u64;
+        if self.white_to_move {
+            h ^= Z_TURN;
         }
+
+        let mut w = self.white;
+        while w != 0 {
+            let idx = w.trailing_zeros() as usize;
+            h ^= Z_WHITE[idx];
+            w &= w - 1;
+        }
+        let mut b = self.black;
+        while b != 0 {
+            let idx = b.trailing_zeros() as usize;
+            h ^= Z_BLACK[idx];
+            b &= b - 1;
+        }
+        let mut k = self.king;
+        while k != 0 {
+            let idx = k.trailing_zeros() as usize;
+            h ^= Z_KING[idx];
+            k &= k - 1;
+        }
+
+        self.hash = h;
     }
 
     pub fn update_hash(&mut self, mv: &Move) {
@@ -316,83 +314,38 @@ impl State {
         let is_king = (self.king & (1u128 << fr_idx)) != 0;
         let is_white = (self.white & (1u128 << fr_idx)) != 0;
 
-        for i in 0..8 {
-            let mut h = self.hash[i];
-            if is_king {
-                h ^= Z_KING[i][fr_idx] ^ Z_KING[i][tr_idx];
-                h ^= Z_WHITE[i][fr_idx] ^ Z_WHITE[i][tr_idx];
-            } else if is_white {
-                h ^= Z_WHITE[i][fr_idx] ^ Z_WHITE[i][tr_idx];
-            } else {
-                h ^= Z_BLACK[i][fr_idx] ^ Z_BLACK[i][tr_idx];
-            }
-
-            let mut caps = mv.captured;
-            while caps != 0 {
-                let cap_idx = caps.trailing_zeros() as usize;
-                let cap_bit = 1u128 << cap_idx;
-
-                if (self.king & cap_bit) != 0 {
-                    h ^= Z_KING[i][cap_idx];
-                    h ^= Z_WHITE[i][cap_idx];
-                } else if (self.white & cap_bit) != 0 {
-                    h ^= Z_WHITE[i][cap_idx];
-                } else if (self.black & cap_bit) != 0 {
-                    h ^= Z_BLACK[i][cap_idx];
-                }
-
-                caps &= caps - 1;
-            }
-            h ^= Z_TURN;
-            self.hash[i] = h;
+        let mut h = self.hash;
+        if is_king {
+            h ^= Z_KING[fr_idx] ^ Z_KING[tr_idx];
+            h ^= Z_WHITE[fr_idx] ^ Z_WHITE[tr_idx];
+        } else if is_white {
+            h ^= Z_WHITE[fr_idx] ^ Z_WHITE[tr_idx];
+        } else {
+            h ^= Z_BLACK[fr_idx] ^ Z_BLACK[tr_idx];
         }
-    }
 
-    pub fn reverse_update_hash(&mut self, mv: &Move) {
-        let fr_idx = (mv.fr * 9 + mv.fc) as usize;
-        let tr_idx = (mv.tr * 9 + mv.tc) as usize;
+        let mut caps = mv.captured;
+        while caps != 0 {
+            let cap_idx = caps.trailing_zeros() as usize;
+            let cap_bit = 1u128 << cap_idx;
 
-        let is_king = (self.king & (1u128 << tr_idx)) != 0;
-        let is_white = (self.white & (1u128 << tr_idx)) != 0;
-
-        for i in 0..8 {
-            let mut h = self.hash[i];
-            if is_king {
-                h ^= Z_KING[i][fr_idx] ^ Z_KING[i][tr_idx];
-                h ^= Z_WHITE[i][fr_idx] ^ Z_WHITE[i][tr_idx];
-            } else if is_white {
-                h ^= Z_WHITE[i][fr_idx] ^ Z_WHITE[i][tr_idx];
-            } else {
-                h ^= Z_BLACK[i][fr_idx] ^ Z_BLACK[i][tr_idx];
+            if (self.king & cap_bit) != 0 {
+                h ^= Z_KING[cap_idx];
+                h ^= Z_WHITE[cap_idx];
+            } else if (self.white & cap_bit) != 0 {
+                h ^= Z_WHITE[cap_idx];
+            } else if (self.black & cap_bit) != 0 {
+                h ^= Z_BLACK[cap_idx];
             }
 
-            let mut caps = mv.captured;
-            while caps != 0 {
-                let cap_idx = caps.trailing_zeros() as usize;
-                let cap_bit = 1u128 << cap_idx;
-
-                if (self.king & cap_bit) != 0 {
-                    h ^= Z_KING[i][cap_idx];
-                    h ^= Z_WHITE[i][cap_idx];
-                } else if (bit_to_mask(self.white_to_move) & cap_bit) != 0 {
-                    h ^= Z_WHITE[i][cap_idx];
-                } else if (bit_to_mask(!self.white_to_move) & cap_bit) != 0 {
-                    h ^= Z_BLACK[i][cap_idx];
-                }
-
-                caps &= caps - 1;
-            }
-            h ^= Z_TURN;
-            self.hash[i] = h;
+            caps &= caps - 1;
         }
-    }
-
-    pub fn canonical_hash(&self) -> u64 {
-        *self.hash.iter().min().unwrap()
+        h ^= Z_TURN;
+        self.hash = h;
     }
 
     pub fn hash(&self) -> u64 {
-        self.hash[0]
+        self.hash
     }
 
     pub fn apply_move(&mut self, mv: &Move, history: &Vec<u64>) {
@@ -417,33 +370,9 @@ impl State {
 
         if self.king & self.white & ALIVE_KING_ZONE == 0 || !self.has_moves() {
             self.win = true;
-        } else if history.contains(&self.hash[0]) {
+        } else if history.contains(&self.hash) {
             self.draw = true;
         }
     }
 
-    #[allow(dead_code)]
-    pub fn unmake_move(&mut self, mv: &Move) {
-        self.reverse_update_hash(mv);
-
-        let fr_idx: i8 = (mv.fr * 9 + mv.fc) as i8;
-        let to_idx: i8 = (mv.tr * 9 + mv.tc) as i8;
-        let white_pawn = extract_bit(self.white, to_idx) as u128;
-        self.white |= white_pawn << to_idx;
-        self.white &= !(1 << fr_idx);
-        let black_pawn = extract_bit(self.black, to_idx) as u128;
-        self.black |= black_pawn << to_idx;
-        self.black &= !(1 << fr_idx);
-        let king_pawn = extract_bit(self.king, to_idx) as u128;
-        self.king |= king_pawn << to_idx;
-        self.king &= !(1 << fr_idx);
-
-        self.white |= bit_to_mask(self.white_to_move) & mv.captured;
-        self.black |= bit_to_mask(!self.white_to_move) & mv.captured;
-
-        self.white_to_move = !self.white_to_move;
-
-        self.win = false;
-        self.draw = false;
-    }
 }

@@ -3,6 +3,7 @@ use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 use termion::{clear, color, cursor, style};
+use std::time::Duration;
 
 use crate::board::State;
 use crate::eval::evaluate;
@@ -96,7 +97,7 @@ pub fn interactive() {
                 } else {
                     "NERO"
                 },
-                state.canonical_hash(),
+                state.hash(),
                 val,
                 instability
             )
@@ -131,7 +132,7 @@ pub fn interactive() {
                 search_val = None;
             }
             Key::Char('g') => {
-                let result = search(state, &history_real, &weights);
+                let result = search(&state, &history_real, &weights,Duration::from_secs(2), false);
                 if let Some(mv) = result.best_move {
                     selected_piece = Some((mv.fr, mv.fc));
                     cursor_r = mv.tr as i8;

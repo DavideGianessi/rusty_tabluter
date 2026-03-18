@@ -81,7 +81,7 @@ pub fn get_game_state() -> std::io::Result<State> {
         white_to_move,
         win: false,
         draw: false,
-        hash: [0; 8],
+        hash: 0,
     };
 
     match turn_str {

@@ -1,4 +1,5 @@
 use std::env;
+use std::time::Duration;
 
 mod board;
 mod zobrist_keys;
@@ -6,7 +7,7 @@ mod search;
 mod eval;
 mod weights;
 //mod debug;
-mod stats;
+//mod stats;
 mod client;
 mod interactive;
 
@@ -15,7 +16,9 @@ use crate::search::{search};
 use crate::client::{connect,get_game_state,send_move};
 use crate::interactive::interactive;
 use crate::weights::Weights;
-use crate::stats::{reset_stats,print_stats_string};
+//use crate::stats::{reset_stats,print_stats_string};
+
+//const MAX_DEPTH: i32 = 6;
 
 fn print_help() {
     println!("Usage:");
@@ -66,7 +69,7 @@ fn main() {
             };
 
 
-            let _time_limit: u64 = match args[1].parse() {
+            let time_limit: u64 = match args[1].parse() {
                 Ok(v) => v,
                 Err(_) => {
                     print_help();
@@ -106,8 +109,9 @@ fn main() {
                     continue;
                 }
 
-                reset_stats();
-                let result = search(state, &history, &weights);
+                //reset_stats();
+                let result = search(&state, &history, &weights, Duration::from_secs(time_limit),true);
+                //println!("{}",print_stats_string());
 
                 let best_move = result.best_move.unwrap();
                 let best_value = result.value;
@@ -122,7 +126,6 @@ fn main() {
                     "mossa: {} {} -> {} {}\nvalue: {}",
                     start_row, start_col, end_row, end_col,best_value
                 );
-                println!("{}",print_stats_string());
 
                 let res = send_move(start_row as usize, start_col as usize, end_row as usize, end_col as usize);
 
