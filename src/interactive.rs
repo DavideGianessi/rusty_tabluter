@@ -290,3 +290,138 @@ fn render_board<W: Write>(
         write!(stdout, "\r\n{}", header).unwrap();
     }
 }
+
+pub fn play_online(is_white_player: bool) {
+    let weights = Weights::new();
+    let mut cursor_r: i8 = 4;
+    let mut cursor_c: i8 = 4;
+    let mut selected_piece: Option<(u8, u8)> = None;
+    let mut search_val: Option<i32> = None;
+    let mut history_real: Vec<u64> = Vec::new();
+
+    let stdin = io::stdin();
+    let mut stdout = io::stdout().into_raw_mode().unwrap();
+    let mut keys = stdin.keys();
+
+    loop {
+        write!(stdout, "{}{}{}Attesa risposta dal server...\r\n", 
+               clear::All, cursor::Goto(1, 1), cursor::Hide).unwrap();
+        stdout.flush().unwrap();
+        let state = match crate::client::get_game_state() {
+            Ok(s) => s,
+            Err(_) => break,
+        };
+        if state.win || state.draw {
+            write!(stdout, "{}{}", clear::All, cursor::Goto(1, 1)).unwrap();
+            render_board(&mut stdout, &state, cursor_r as u8, cursor_c as u8, None, &[], 0);
+            
+            let mut msg = "";
+            if state.win && !state.white_to_move { msg = "VITTORIA BIANCO"; }
+            if state.win && state.white_to_move { msg = "VITTORIA NERO"; }
+            if state.draw { msg = "PATTA"; }
+            
+            write!(stdout, "\r\n\n    {}\r\n", msg).unwrap();
+            write!(stdout, "\r\n    Premi [Q] per uscire\r\n").unwrap();
+            stdout.flush().unwrap();
+
+            for key in keys.by_ref() {
+                if let Ok(Key::Char('q')) = key { return; }
+            }
+            break;
+        }
+
+        if state.white_to_move != is_white_player {
+            write!(stdout, "{}{}", clear::All, cursor::Goto(1, 1)).unwrap();
+            render_board(&mut stdout, &state, cursor_r as u8, cursor_c as u8, None, &[], 0);
+            write!(stdout, "\r\n Turno AVVERSARIO | Hash: {}\r\n", state.hash()).unwrap();
+            write!(stdout, " In attesa della mossa...\r\n").unwrap();
+            stdout.flush().unwrap();
+            history_real.push(state.hash());
+            continue; 
+        }
+
+        let mut turn_over = false;
+        let current_state = state.clone();
+
+        while !turn_over {
+            write!(stdout, "{}{}{}", clear::All, cursor::Goto(1, 1), cursor::Show).unwrap();
+            
+            let mut all_moves = Vec::new();
+            current_state.generate_moves(&mut all_moves);
+
+            let mut capture_mask: u128 = 0;
+            let legal_targets: Vec<(u8, u8)> = if let Some((sr, sc)) = selected_piece {
+                let targets: Vec<(u8, u8)> = all_moves
+                    .iter()
+                    .filter(|m| m.fr == sr && m.fc == sc)
+                    .map(|m| (m.tr, m.tc))
+                    .collect();
+
+                if let Some(mv) = all_moves.iter().find(|m| {
+                    m.fr == sr && m.fc == sc && m.tr == cursor_r as u8 && m.tc == cursor_c as u8
+                }) {
+                    capture_mask = mv.captured;
+                }
+                targets
+            } else {
+                Vec::new()
+            };
+
+            render_board(&mut stdout, &current_state, cursor_r as u8, cursor_c as u8, selected_piece, &legal_targets, capture_mask);
+
+            let val = evaluate(&current_state, &weights);
+            write!(stdout, "\r\n TUO TURNO ({}) | Eval: {}\r\n", 
+                   if is_white_player { "BIANCO" } else { "NERO" }, val).unwrap();
+            
+            if let Some(sv) = search_val {
+                write!(stdout, " Suggestion Score: {}\r\n", sv).unwrap();
+            } else {
+                write!(stdout, "\r\n").unwrap();
+            }
+            
+            write!(stdout, " [WASD] Muovi | [SPAZIO] Seleziona | [G] Search | [Q] Quit\r\n").unwrap();
+            stdout.flush().unwrap();
+
+            if let Some(Ok(key)) = keys.next() {
+                match key {
+                    Key::Char('q') => return,
+                    Key::Char('w') | Key::Char('k') => if cursor_r > 0 { cursor_r -= 1 },
+                    Key::Char('s') | Key::Char('j') => if cursor_r < 8 { cursor_r += 1 },
+                    Key::Char('a') | Key::Char('h') => if cursor_c > 0 { cursor_c -= 1 },
+                    Key::Char('d') | Key::Char('l') => if cursor_c < 8 { cursor_c += 1 },
+                    Key::Char('g') => {
+                        let res = crate::search::search(&current_state, &history_real, &weights, Duration::from_secs(2), false);
+                        if let Some(mv) = res.best_move {
+                            selected_piece = Some((mv.fr, mv.fc));
+                            cursor_r = mv.tr as i8;
+                            cursor_c = mv.tc as i8;
+                            search_val = Some(res.value);
+                        }
+                    },
+                    Key::Char(' ') => {
+                        let (r, c) = (cursor_r as u8, cursor_c as u8);
+                        if let Some((sr, sc)) = selected_piece {
+                            if let Some(mv) = all_moves.iter().find(|m| m.fr == sr && m.fc == sc && m.tr == r && m.tc == c) {
+                                let res = crate::client::send_move(mv.fr as usize, mv.fc as usize, mv.tr as usize, mv.tc as usize);
+                                if res.is_ok() {
+                                    history_real.push(current_state.hash());
+                                    selected_piece = None;
+                                    search_val = None;
+                                    turn_over = true;
+                                }
+                            } else {
+                                selected_piece = None;
+                            }
+                        } else if (is_white_player && current_state.is_white(r, c)) || (!is_white_player && current_state.is_black(r, c)) {
+                            selected_piece = Some((r, c));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+
+

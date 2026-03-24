@@ -12,7 +12,7 @@ mod interactive;
 use crate::board::State;
 use crate::search::{search};
 use crate::client::{connect,get_game_state,send_move};
-use crate::interactive::interactive;
+use crate::interactive::{interactive,play_online};
 use crate::weights::Weights;
 
 fn print_help() {
@@ -22,7 +22,10 @@ fn print_help() {
     println!("      Start interactive debugging mode.");
 
     println!("  bot <white|black> <time_limit> <server_ip>");
-    println!("      Connect to server and play normally.");
+    println!("      Connect to server and run bot normally.");
+
+    println!("  bot <white|black> <time_limit> <server_ip> --human");
+    println!("      Connect to server and play using gui.");
 
     println!("  bot -h");
     println!("      Show this help.");
@@ -47,7 +50,7 @@ fn main() {
         }
 
         _ => {
-            if args.len() != 3 {
+            if args.len() < 3 {
                 print_help();
                 return;
             }
@@ -74,9 +77,16 @@ fn main() {
 
             let server_ip = &args[2];
 
+            let is_human = args.len() > 3 && args[3] == "--human";
+
             let res = connect(server_ip, is_white);
             if !res.is_ok() {
                 println!("network error");
+            }
+
+            if is_human {
+                play_online(is_white);
+                return;
             }
 
             let mut history: Vec<u64> = Vec::new();
