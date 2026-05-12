@@ -28,7 +28,8 @@ pub fn interactive() {
     let mut state = State::new();
     let mut history: Vec<State> = Vec::new();
     let mut history_real: Vec<u64> = Vec::new();
-    let weights = Weights::new();
+    let white_weights = Weights::new(true);
+    let black_weights = Weights::new(false);
 
     let mut cursor_r: i8 = 4;
     let mut cursor_c: i8 = 4;
@@ -87,18 +88,20 @@ pub fn interactive() {
                 capture_mask,
             );
 
-            let val = evaluate(&state, &weights);
+            let white_val = evaluate(&state, &white_weights);
+            let black_val = evaluate(&state, &black_weights);
 
             write!(
                 stdout,
-                "\r\n Turno: {} | Hash: {} | Eval: {}\r\n",
+                "\r\n Turno: {} | Hash: {} | white Eval: {} | black Eval: {} \r\n",
                 if state.white_to_move {
                     "BIANCO"
                 } else {
                     "NERO"
                 },
                 state.hash(),
-                val
+                white_val,
+                black_val
             )
             .unwrap();
             if let Some(s_val) = search_val {
@@ -131,6 +134,7 @@ pub fn interactive() {
                 search_val = None;
             }
             Key::Char('g') => {
+                let weights = if state.white_to_move { white_weights } else { black_weights };
                 let result = search(&state, &history_real, &weights,Duration::from_secs(2), false);
                 if let Some(mv) = result.best_move {
                     selected_piece = Some((mv.fr, mv.fc));
@@ -292,7 +296,7 @@ fn render_board<W: Write>(
 }
 
 pub fn play_online(is_white_player: bool) {
-    let weights = Weights::new();
+    let weights = Weights::new(is_white_player);
     let mut cursor_r: i8 = 4;
     let mut cursor_c: i8 = 4;
     let mut selected_piece: Option<(u8, u8)> = None;

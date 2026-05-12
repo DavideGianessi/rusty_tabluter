@@ -63,15 +63,15 @@ pub struct Move {
 impl State {
     pub fn new() -> Self {
         let pos_str = "\
-            OOBBBOBOO\n\
-            OOOOOOOOO\n\
+            OOOBBBOOO\n\
+            OOOOBOOOO\n\
+            OOOOWOOOO\n\
             BOOOWOOOB\n\
-            OOOOWOOOB\n\
-            BOWWKWWOB\n\
-            BOOOWOOOO\n\
+            BBWWKWWBB\n\
             BOOOWOOOB\n\
-            OOOOOOOOO\n\
-            OOBOBBBOO\n\
+            OOOOWOOOO\n\
+            OOOOBOOOO\n\
+            OOOBBBOOO\n\
             turn: W";
         Self::from_position_string(pos_str)
     }

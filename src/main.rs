@@ -90,7 +90,7 @@ fn main() {
             }
 
             let mut history: Vec<u64> = Vec::new();
-            let weights = Weights::new();
+            let weights = Weights::new(is_white);
 
             loop {
                 let state: State = get_game_state().unwrap();

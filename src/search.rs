@@ -184,6 +184,9 @@ fn alphabeta(
 
     if state.win || state.draw {
         if state.win { return Some((-WIN_SCORE, None)); }
+        if is_white_searcher {
+            return Some((0, None));
+        }
         let score = if state.white_to_move == is_white_searcher { DRAW_SCORE } else { -DRAW_SCORE };
         return Some((score, None));
     }
