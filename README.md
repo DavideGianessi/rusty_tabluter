@@ -1,4 +1,4 @@
-# Tabluter (Rust Hashton Tablut bot)
+# Rust Hashton Tablut bot - Team CrabNarok
 
 A Rust bot that plays the *Chesani* variant of *Hashton Tablut* for the exam of "Foundation in artificial intelligence".
 
@@ -50,6 +50,10 @@ Notes:
 	 - sends it back to the server.
 
 So the “AI core” is: **move generation** (`State::generate_moves`) → **search** (`src/search.rs`) → **leaf evaluation** (`src/eval.rs`).
+
+## Interactive mode
+![Interactive](presentation/interactive.gif)
+
 
 ## Code map
 
@@ -137,13 +141,6 @@ Some notable features (names as in `src/eval.rs`):
 
 ### Special case: `square_formation`
 
-When there are enough White pieces, the evaluation checks for a 2×2 “square” formation around the King (excluding the throne). If enabled by weights, it can clamp overly optimistic scores in some situations.
+When there are enough White pieces, the evaluation checks for a 2×2 “square” formation around the King (excluding the throne). If enabled by weights, it makes the white player attempt to get a draw by repetition while the king is safe in this fortress.
 
-## Why search + eval work well together
 
-- `src/search.rs` explores candidate lines deeper and deeper.
-- At leaves it calls `evaluate`.
-- Alpha-beta prunes branches that cannot affect the final decision.
-- The transposition table avoids recomputing positions and improves move ordering.
-
-In short: evaluation estimates position quality, and search uses that estimate to choose the best move under a time budget.
