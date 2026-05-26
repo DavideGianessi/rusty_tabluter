@@ -1,6 +1,8 @@
 # Tabluter (Rust Hashton Tablut bot)
 
-A Rust bot that plays the *Chesani* variant of *Hashton Tablut*.
+A Rust bot that plays the *Chesani* variant of *Hashton Tablut* for the exam of "Foundation in artificial intelligence".
+
+Compatible with [the tournament server](https://github.com/AGalassi/TablutCompetition)
 
 Internally it represents the 9×9 board as **bitboards** (`u128`) and picks moves using a **Negamax + Alpha-Beta** search with **iterative deepening** and a fixed-size **transposition table**. Leaf positions are scored by a **linear, feature-based evaluation** implemented in `src/eval.rs` and parameterized by weights in `src/weights.rs`.
 
@@ -53,7 +55,6 @@ So the “AI core” is: **move generation** (`State::generate_moves`) → **sea
 
 ### Root
 
-- `.cargo/config.toml`: sets `rustflags = ["-C", "target_cpu=native"]` to optimize for the local CPU.
 - `Cargo.toml`: crate config (name `tabluter`, edition 2024) and dependencies (`termion`, `serde`, `serde_json`).
 - `Cargo.lock`: Cargo lockfile.
 - `LICENSE`: license.
